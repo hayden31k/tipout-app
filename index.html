@@ -96,8 +96,8 @@
   .result .amount.owe { color: var(--owe); }
   .result .amount.get { color: var(--get); }
   .result .caption { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
-  .breakdown { margin-top: 14px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); text-align: left; }
-  .breakdown div { display: flex; justify-content: space-between; padding: 2px 0; }
+  .breakdown { margin-top: 14px; font-family: 'Space Mono', monospace; font-size: 11px; color: var(--ink-soft); text-align: left; }
+  .breakdown div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 2px 10px; padding: 3px 0; }
 
   .cash-block { margin-top: 18px; padding-top: 16px; border-top: 1.5px dashed var(--rule); }
   .cash-block .field-row label { font-size: 13px; }
@@ -120,10 +120,12 @@
   }
 
   .history-empty { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); background: var(--paper-2); padding: 14px; border-radius: 3px; text-align: center; }
-  .copy { background: var(--paper); border-radius: 2px; padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+  .copy { background: var(--paper); border-radius: 2px; padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .copy .meta { flex: 1 1 auto; min-width: 0; }
+  .copy .amtwrap { flex: 0 0 auto; }
   .copy .meta { font-size: 12px; }
   .copy .meta .date { font-weight: 600; }
-  .copy .meta .sub { color: var(--ink-soft); font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: -0.01em; }
+  .copy .meta .sub { color: var(--ink-soft); font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: -0.01em; word-break: break-word; }
   .copy .amtwrap { text-align: right; }
   .copy .amt { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 16px; }
   .copy .amt.owe { color: var(--owe); }
@@ -384,6 +386,8 @@
       const cashAmt = hasCash ? e.cashTips : 0;
       const owedAmt = e.net < 0 ? Math.abs(e.net) : 0;
       const totalTips = cashAmt + owedAmt;
+      const totalSales = e.foodSales + e.barSales;
+      const tipoutPct = totalSales > 0 && typeof e.totalTipout === 'number' ? (e.totalTipout / totalSales * 100) : null;
 
       let subLine;
       if (e.net < 0) {
@@ -403,7 +407,7 @@
       return `<div class="copy ${receivedCls}" data-id="${e.ts}">
         <div class="meta">
           <div class="date">${dateStr}</div>
-          <div class="sub">F ${e.foodSales} &middot; D ${e.barSales}</div>
+          <div class="sub">F ${e.foodSales} &middot; D ${e.barSales}${tipoutPct !== null ? ' (' + tipoutPct.toFixed(1) + '%)' : ''}</div>
           ${receiveRow}
         </div>
         <div class="amtwrap">
@@ -601,9 +605,9 @@
       return;
     }
 
-    const withCash = inRange.filter(e => typeof e.takeHome === 'number');
-    const avgTakehome = withCash.length ? withCash.reduce((s, e) => s + e.takeHome, 0) / withCash.length : 0;
-    const totalTakehome = withCash.reduce((s, e) => s + e.takeHome, 0);
+    const tipsFor = (e) => (typeof e.cashTips === 'number' && !isNaN(e.cashTips) ? e.cashTips : 0) + (e.net < 0 ? Math.abs(e.net) : 0);
+    const avgTakehome = inRange.length ? inRange.reduce((s, e) => s + tipsFor(e), 0) / inRange.length : 0;
+    const totalTakehome = inRange.reduce((s, e) => s + tipsFor(e), 0);
     const avgSales = inRange.reduce((s, e) => s + e.foodSales + e.barSales, 0) / inRange.length;
     const totalSales = inRange.reduce((s, e) => s + e.foodSales + e.barSales, 0);
 
@@ -618,9 +622,9 @@
 
     el.innerHTML = `
       <div class="stat-grid">
-        <div class="stat-card"><div class="label">Avg take-home / shift</div><div class="value">${fmt(avgTakehome)}</div></div>
+        <div class="stat-card"><div class="label">Avg total tips / shift</div><div class="value">${fmt(avgTakehome)}</div></div>
         <div class="stat-card"><div class="label">Avg sales / shift</div><div class="value">${fmt(avgSales)}</div></div>
-        <div class="stat-card"><div class="label">Total take-home</div><div class="value">${fmt(totalTakehome)}</div></div>
+        <div class="stat-card"><div class="label">Total tips</div><div class="value">${fmt(totalTakehome)}</div></div>
         <div class="stat-card"><div class="label">Total sales</div><div class="value">${fmt(totalSales)}</div></div>
       </div>
       <div class="stats-section-title">Avg sales by day worked</div>
@@ -631,7 +635,7 @@
           <span class="day-val">${d.count ? fmt(d.avg) : '—'}</span>
         </div>
       `).join('')}
-      <div class="caption" style="margin-top:10px;font-size:11px;text-align:left;">based on ${inRange.length} shift${inRange.length === 1 ? '' : 's'} in this period${withCash.length ? `, ${withCash.length} with take-home recorded` : ''}</div>
+      <div class="caption" style="margin-top:10px;font-size:11px;text-align:left;">based on ${inRange.length} shift${inRange.length === 1 ? '' : 's'} in this period</div>
     `;
   }
 
