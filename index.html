@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Daily Tipout</title>
+<meta name="theme-color" content="#16211B" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Tipout" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" href="icon-192.png" />
+<style>
+  html, body { margin: 0; padding: 0; background: #16211B; }
+
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Archivo:wght@500;600;700&display=swap');
+
+  #tipout-root {
+    --bg: #16211B;
+    --bg-2: #1D2C22;
+    --paper: #F0EAD6;
+    --paper-2: #E7DFC5;
+    --ink: #2B241A;
+    --ink-soft: #6E6553;
+    --owe: #B33A3A;
+    --get: #7A6A2E;
+    --brass: #B08D57;
+    --rule: #C9BE9E;
+
+    font-family: 'Archivo', sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 20% 10%, var(--bg-2) 0%, transparent 45%),
+      radial-gradient(circle at 80% 90%, var(--bg-2) 0%, transparent 45%);
+    padding: 32px 16px;
+    min-height: 100%;
+    box-sizing: border-box;
+  }
+
+  #tipout-root * { box-sizing: border-box; }
+  .mono { font-family: 'Space Mono', monospace; }
+  .ticket-wrap { max-width: 420px; margin: 0 auto; }
+
+  .masthead { text-align: center; color: var(--paper); margin-bottom: 18px; }
+  .masthead h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: 0.01em; margin: 0 0 4px; }
+  .masthead p { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--brass); margin: 0; }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tab-btn {
+    flex: 1; padding: 9px 4px; border-radius: 3px; border: 1.5px solid var(--brass);
+    background: transparent; color: var(--paper); font-family: 'Archivo', sans-serif;
+    font-weight: 600; font-size: 12.5px; cursor: pointer; letter-spacing: 0.01em;
+  }
+  .tab-btn.active { background: var(--brass); color: #2B241A; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .ticket { background: var(--paper); border-radius: 3px; position: relative; padding: 26px 24px 20px; box-shadow: 0 18px 40px rgba(0,0,0,0.35); }
+  .perf { height: 14px; display: flex; align-items: center; justify-content: space-between; padding: 0 6px; margin-bottom: 4px; }
+  .perf span { width: 8px; height: 8px; border-radius: 50%; background: var(--bg); }
+
+  .field-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 14px 0; }
+  .field-row label { font-size: 13.5px; color: var(--ink); line-height: 1.3; }
+  .field-row .hint { display: block; font-size: 11px; color: var(--ink-soft); margin-top: 1px; }
+  .field-row input[type=number] {
+    width: 108px; text-align: right; border: none; border-bottom: 1.5px solid var(--rule);
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 16px; color: var(--ink); padding: 4px 2px;
+  }
+  .field-row input[type=number]:focus { outline: none; border-bottom-color: var(--ink); }
+  .field-row input::-webkit-outer-spin-button, .field-row input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+  .dashed { border: none; border-top: 1.5px dashed var(--rule); margin: 18px 0; }
+
+  .settings-toggle {
+    background: none; border: none; font-family: 'Space Mono', monospace; font-size: 11px;
+    color: var(--ink-soft); text-decoration: underline; cursor: pointer; padding: 0;
+  }
+
+  .settings-block { background: var(--paper-2); border-radius: 2px; padding: 14px 14px 4px; margin: 12px 0 4px; }
+  .settings-block .field-row { margin: 8px 0; }
+  .settings-block .field-row label { font-size: 12.5px; }
+  .settings-block input[type=number] { width: 70px; font-size: 14px; }
+
+  .calc-btn {
+    width: 100%; margin-top: 6px; padding: 13px; background: var(--ink); color: var(--paper);
+    border: none; border-radius: 3px; font-family: 'Archivo', sans-serif; font-weight: 600;
+    font-size: 14.5px; letter-spacing: 0.01em; cursor: pointer;
+  }
+  .calc-btn:active { transform: translateY(1px); }
+
+  .result { margin-top: 18px; padding-top: 16px; border-top: 1.5px dashed var(--rule); text-align: center; }
+  .result .amount { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 34px; line-height: 1; }
+  .result .amount.owe { color: var(--owe); }
+  .result .amount.get { color: var(--get); }
+  .result .caption { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
+  .breakdown { margin-top: 14px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); text-align: left; }
+  .breakdown div { display: flex; justify-content: space-between; padding: 2px 0; }
+
+  .cash-block { margin-top: 18px; padding-top: 16px; border-top: 1.5px dashed var(--rule); }
+  .cash-block .field-row label { font-size: 13px; }
+  .takehome {
+    margin-top: 10px; text-align: center; font-family: 'Space Mono', monospace;
+    font-size: 20px; font-weight: 700; color: var(--get); display: none;
+  }
+  .takehome .cap { display: block; font-family: 'Archivo', sans-serif; font-weight: 500; font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+
+  .save-row { display: flex; gap: 8px; margin-top: 16px; }
+  .save-row button {
+    flex: 1; padding: 10px; border-radius: 3px; font-family: 'Archivo', sans-serif; font-weight: 600;
+    font-size: 13px; cursor: pointer; border: 1.5px solid var(--ink); background: transparent; color: var(--ink);
+  }
+  .save-row button.primary { background: var(--brass); border-color: var(--brass); color: #2B241A; }
+
+  .pending-banner {
+    font-family: 'Space Mono', monospace; font-size: 12px; color: var(--paper);
+    text-align: center; margin-bottom: 14px; opacity: 0.9;
+  }
+
+  .history-empty { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); background: var(--paper-2); padding: 14px; border-radius: 3px; text-align: center; }
+  .copy { background: var(--paper); border-radius: 2px; padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+  .copy .meta { font-size: 12px; }
+  .copy .meta .date { font-weight: 600; }
+  .copy .meta .sub { color: var(--ink-soft); font-family: 'Space Mono', monospace; font-size: 11px; }
+  .copy .amtwrap { text-align: right; }
+  .copy .amt { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 16px; }
+  .copy .amt.owe { color: var(--owe); }
+  .copy .amt.get { color: var(--get); }
+  .copy .cash { font-family: 'Space Mono', monospace; font-size: 10.5px; color: var(--ink-soft); }
+  .copy .edit-btn {
+    background: none; border: 1.3px solid var(--ink-soft); color: var(--ink-soft);
+    font-family: 'Space Mono', monospace; font-size: 10px; border-radius: 3px;
+    padding: 3px 8px; cursor: pointer; margin-left: 10px;
+  }
+  .copy.received { opacity: 0.55; }
+  .receive-row { display: flex; align-items: center; gap: 5px; margin-top: 4px; }
+  .receive-row input[type=checkbox] { width: 13px; height: 13px; accent-color: var(--brass); cursor: pointer; }
+  .receive-row label { font-family: 'Space Mono', monospace; font-size: 10.5px; color: var(--ink-soft); cursor: pointer; }
+
+  .edit-card { background: var(--paper); border-radius: 2px; padding: 14px; margin-bottom: 8px; border: 1.5px dashed var(--brass); }
+  .edit-card .field-row { margin: 8px 0; }
+  .edit-card .field-row label { font-size: 12px; }
+  .edit-card input[type=number] { width: 90px; font-size: 14px; }
+  .edit-row-btns { display: flex; gap: 8px; margin-top: 12px; }
+  .edit-row-btns button {
+    flex: 1; padding: 8px; border-radius: 3px; font-family: 'Archivo', sans-serif; font-weight: 600;
+    font-size: 12px; cursor: pointer; border: 1.5px solid var(--ink); background: transparent; color: var(--ink);
+  }
+  .edit-row-btns button.save { background: var(--brass); border-color: var(--brass); color: #2B241A; }
+  .edit-row-btns button.delete { border-color: var(--owe); color: var(--owe); }
+
+  /* Stats page */
+  .period-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .period-btn {
+    padding: 6px 10px; border-radius: 12px; border: 1.3px solid var(--ink-soft);
+    background: transparent; color: var(--ink-soft); font-family: 'Space Mono', monospace;
+    font-size: 11px; cursor: pointer;
+  }
+  .period-btn.active { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+  .custom-range-row { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .custom-range-row input[type=date] {
+    font-family: 'Space Mono', monospace; font-size: 12px; padding: 5px 6px;
+    border: 1.3px solid var(--rule); border-radius: 3px; background: var(--paper-2); color: var(--ink);
+  }
+  .custom-range-row .to-label { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--ink-soft); }
+  .custom-range-row #applyRange {
+    padding: 5px 10px; border-radius: 3px; border: 1.3px solid var(--brass); background: var(--brass);
+    color: #2B241A; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 11.5px; cursor: pointer;
+  }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .stat-card { background: var(--paper-2); border-radius: 3px; padding: 12px 14px; }
+  .stat-card .label { font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.05em; color: var(--ink-soft); text-transform: uppercase; }
+  .stat-card .value { font-family: 'Space Mono', monospace; font-size: 20px; font-weight: 700; margin-top: 4px; }
+
+  .day-row { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
+  .day-row .day-label { width: 34px; font-family: 'Space Mono', monospace; font-size: 11.5px; color: var(--ink-soft); }
+  .day-row .bar-track { flex: 1; height: 9px; background: var(--paper-2); border-radius: 2px; overflow: hidden; }
+  .day-row .bar-fill { height: 100%; background: var(--brass); }
+  .day-row .day-val { width: 62px; text-align: right; font-family: 'Space Mono', monospace; font-size: 11.5px; }
+
+  .stats-empty { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); text-align: center; padding: 20px 0; }
+  .stats-section-title { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.06em; color: var(--ink-soft); text-transform: uppercase; margin: 20px 0 8px; }
+</style>
+</head>
+<body>
+<div id="tipout-root">
+  <div class="ticket-wrap">
+    <div class="masthead">
+      <h1>Daily Tipout</h1>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tabTonight">Today</button>
+      <button class="tab-btn" id="tabLog">Log</button>
+      <button class="tab-btn" id="tabStats">Stats</button>
+    </div>
+
+    <div class="page active" id="pageTonight">
+      <div class="ticket">
+        <div class="perf"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+
+        <div class="field-row">
+          <label>Food sales<span class="hint">total food sold, before tax</span></label>
+          <input type="number" inputmode="decimal" id="foodSales" placeholder="0.00" />
+        </div>
+        <div class="field-row">
+          <label>Drink sales<span class="hint">total bar sold, before tax</span></label>
+          <input type="number" inputmode="decimal" id="barSales" placeholder="0.00" />
+        </div>
+        <div class="field-row">
+          <label>Charge tip<span class="hint">total tips on card/debit machine</span></label>
+          <input type="number" inputmode="decimal" id="chargeTips" placeholder="0.00" />
+        </div>
+        <div class="field-row">
+          <label>POS calculated<span class="hint">from your end-of-night report</span></label>
+          <input type="number" inputmode="decimal" id="posCalc" placeholder="0.00" />
+        </div>
+
+        <hr class="dashed" />
+
+        <button class="settings-toggle" id="settingsToggle">edit tipout %</button>
+        <div class="settings-block" id="settingsBlock" style="display:none;">
+          <div class="field-row">
+            <label>Food tipout %</label>
+            <input type="number" inputmode="decimal" id="foodPct" step="0.1" />
+          </div>
+          <div class="field-row">
+            <label>Drink tipout %</label>
+            <input type="number" inputmode="decimal" id="barPct" step="0.1" />
+          </div>
+          <div class="field-row">
+            <label>Tip tipout %</label>
+            <input type="number" inputmode="decimal" id="tipPct" step="0.1" />
+          </div>
+        </div>
+
+        <button class="calc-btn" id="calcBtn">Calculate</button>
+
+        <div class="result" id="resultBlock" style="display:none;">
+          <div class="amount" id="resultAmount">$0.00</div>
+          <div class="caption" id="resultCaption">—</div>
+          <div class="breakdown" id="breakdown"></div>
+          <div class="caption" style="margin-top:6px;font-size:11px;">negative means the restaurant owes you</div>
+
+          <div class="cash-block">
+            <div class="field-row">
+              <label>Cash you left with?<span class="hint">what's actually in your pocket &mdash; optional</span></label>
+              <input type="number" inputmode="decimal" id="cashTips" placeholder="0.00" />
+            </div>
+            <div class="takehome" id="takehomeBlock">
+              $0.00
+              <span class="cap">take-home tonight</span>
+            </div>
+          </div>
+
+          <div class="save-row">
+            <button id="clearBtn">Clear</button>
+            <button class="primary" id="saveBtn">Save to log</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="pageLog">
+      <div class="pending-banner" id="pendingTotal"></div>
+      <div id="historyList"><div class="history-empty">No shifts logged yet.</div></div>
+    </div>
+
+    <div class="page" id="pageStats">
+      <div class="ticket" id="statsTicket">
+        <div class="perf"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+
+        <div class="period-row" id="periodRow">
+          <button class="period-btn active" data-period="7d">Last 7 days</button>
+          <button class="period-btn" data-period="30d">Last 30 days</button>
+          <button class="period-btn" data-period="month">This month</button>
+          <button class="period-btn" data-period="custom">Select dates</button>
+        </div>
+        <div class="custom-range-row" id="customRangeRow" style="display:none;">
+          <input type="date" id="rangeStart" />
+          <span class="to-label">to</span>
+          <input type="date" id="rangeEnd" />
+          <button id="applyRange">Apply</button>
+        </div>
+
+        <div id="statsContent"><div class="stats-empty">Log a few shifts to see your numbers here.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const $ = (id) => document.getElementById(id);
+  const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2 };
+  let settings = { ...DEFAULT_SETTINGS };
+  let entries = [];
+  let lastCalc = null;
+  let editingId = null;
+
+  function fmt(n) {
+    const sign = n < 0 ? '-' : '';
+    return sign + '$' + Math.abs(n).toFixed(2);
+  }
+
+  // ---- Tabs ----
+  function showPage(name) {
+    $('pageTonight').classList.toggle('active', name === 'tonight');
+    $('pageLog').classList.toggle('active', name === 'log');
+    $('pageStats').classList.toggle('active', name === 'stats');
+    $('tabTonight').classList.toggle('active', name === 'tonight');
+    $('tabLog').classList.toggle('active', name === 'log');
+    $('tabStats').classList.toggle('active', name === 'stats');
+    if (name === 'stats') renderStats();
+    if (name === 'log') { editingId = null; renderHistory(); }
+  }
+  $('tabTonight').addEventListener('click', () => showPage('tonight'));
+  $('tabLog').addEventListener('click', () => showPage('log'));
+  $('tabStats').addEventListener('click', () => showPage('stats'));
+
+  // ---- Settings ----
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem('tipout-settings');
+      if (raw) settings = JSON.parse(raw);
+    } catch (e) { /* no settings saved yet */ }
+    $('foodPct').value = settings.foodPct;
+    $('barPct').value = settings.barPct;
+    $('tipPct').value = settings.tipPct;
+  }
+  function saveSettings() {
+    settings = {
+      foodPct: parseFloat($('foodPct').value) || 0,
+      barPct: parseFloat($('barPct').value) || 0,
+      tipPct: parseFloat($('tipPct').value) || 0,
+    };
+    try { localStorage.setItem('tipout-settings', JSON.stringify(settings)); }
+    catch (e) { console.error('settings save failed', e); }
+  }
+
+  // ---- Entries ----
+  function loadEntries() {
+    try {
+      const raw = localStorage.getItem('tipout-entries');
+      if (raw) entries = JSON.parse(raw);
+    } catch (e) { entries = []; }
+    renderHistory();
+  }
+  function persistEntries() {
+    try { localStorage.setItem('tipout-entries', JSON.stringify(entries)); }
+    catch (e) { console.error('entries save failed', e); }
+  }
+
+  function recompute(e) {
+    const tipoutFood = e.foodSales * (settings.foodPct / 100);
+    const tipoutBar = e.barSales * (settings.barPct / 100);
+    const tipoutTip = e.chargeTips * (settings.tipPct / 100);
+    e.totalTipout = tipoutFood + tipoutBar + tipoutTip;
+    e.net = e.posCalculated + e.totalTipout;
+    if (typeof e.cashTips === 'number' && !isNaN(e.cashTips)) e.takeHome = e.cashTips;
+    return e;
+  }
+
+  function renderHistory() {
+    const list = $('historyList');
+    if (!entries.length) {
+      list.innerHTML = '<div class="history-empty">No shifts logged yet.</div>';
+      $('pendingTotal').textContent = '';
+      return;
+    }
+    const sorted = [...entries].sort((a, b) => b.ts - a.ts);
+
+    list.innerHTML = sorted.map(e => {
+      if (editingId === e.ts) return renderEditCard(e);
+
+      const d = new Date(e.ts);
+      const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const hasCash = typeof e.cashTips === 'number' && !isNaN(e.cashTips);
+      const cashAmt = hasCash ? e.cashTips : 0;
+      const owedAmt = e.net < 0 ? Math.abs(e.net) : 0;
+      const totalTips = cashAmt + owedAmt;
+
+      let subLine;
+      if (e.net < 0) {
+        subLine = `restaurant owes you ${fmt(owedAmt)}`;
+      } else if (hasCash) {
+        subLine = `you owed the restaurant ${fmt(e.net)}`;
+      } else {
+        subLine = 'no take-home recorded';
+      }
+
+      const receiveRow = e.net < 0 ? `
+        <div class="receive-row">
+          <input type="checkbox" id="recv-${e.ts}" data-recv="${e.ts}" ${e.received ? 'checked' : ''} />
+          <label for="recv-${e.ts}">${e.received ? 'received' : 'mark received'}</label>
+        </div>` : '';
+      const receivedCls = e.received ? 'received' : '';
+      return `<div class="copy ${receivedCls}" data-id="${e.ts}">
+        <div class="meta">
+          <div class="date">${dateStr}</div>
+          <div class="sub">food ${e.foodSales} &middot; drink ${e.barSales}</div>
+          ${receiveRow}
+        </div>
+        <div class="amtwrap">
+          <div class="amt get">${fmt(totalTips)}</div>
+          <div class="cash">${subLine}</div>
+        </div>
+        <button class="edit-btn" data-edit="${e.ts}">edit</button>
+      </div>`;
+    }).join('');
+
+    if (editingId === null) {
+      list.querySelectorAll('[data-edit]').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          editingId = parseFloat(ev.currentTarget.getAttribute('data-edit'));
+          renderHistory();
+        });
+      });
+      list.querySelectorAll('[data-recv]').forEach(box => {
+        box.addEventListener('change', (ev) => {
+          const ts = parseFloat(ev.currentTarget.getAttribute('data-recv'));
+          const entry = entries.find(e => e.ts === ts);
+          if (entry) entry.received = ev.currentTarget.checked;
+          persistEntries();
+          renderHistory();
+        });
+      });
+    } else {
+      wireEditCard();
+    }
+
+    const pending = entries.filter(e => e.net < 0 && !e.received).reduce((s, e) => s + Math.abs(e.net), 0);
+    $('pendingTotal').textContent = pending > 0
+      ? `RESTAURANT CURRENTLY OWES YOU: ${fmt(pending)}`
+      : 'NOTHING PENDING FROM THE RESTAURANT';
+  }
+
+  function renderEditCard(e) {
+    return `<div class="edit-card" data-editid="${e.ts}">
+      <div class="field-row"><label>Food sales</label><input type="number" id="ed-food" value="${e.foodSales}" /></div>
+      <div class="field-row"><label>Drink sales</label><input type="number" id="ed-bar" value="${e.barSales}" /></div>
+      <div class="field-row"><label>Charge tip</label><input type="number" id="ed-charge" value="${e.chargeTips}" /></div>
+      <div class="field-row"><label>POS calculated</label><input type="number" id="ed-pos" value="${e.posCalculated}" /></div>
+      <div class="field-row"><label>Cash left with</label><input type="number" id="ed-cash" value="${typeof e.cashTips === 'number' ? e.cashTips : ''}" /></div>
+      <div class="edit-row-btns">
+        <button class="cancel" id="ed-cancel">Cancel</button>
+        <button class="delete" id="ed-delete">Delete</button>
+        <button class="save" id="ed-save">Save</button>
+      </div>
+    </div>`;
+  }
+
+  function wireEditCard() {
+    $('ed-cancel').addEventListener('click', () => { editingId = null; renderHistory(); });
+    $('ed-delete').addEventListener('click', () => {
+      entries = entries.filter(e => e.ts !== editingId);
+      editingId = null;
+      persistEntries();
+      renderHistory();
+    });
+    $('ed-save').addEventListener('click', () => {
+      const entry = entries.find(e => e.ts === editingId);
+      if (!entry) return;
+      entry.foodSales = parseFloat($('ed-food').value) || 0;
+      entry.barSales = parseFloat($('ed-bar').value) || 0;
+      entry.chargeTips = parseFloat($('ed-charge').value) || 0;
+      entry.posCalculated = parseFloat($('ed-pos').value) || 0;
+      const cashVal = $('ed-cash').value;
+      entry.cashTips = cashVal === '' ? undefined : parseFloat(cashVal) || 0;
+      if (entry.cashTips === undefined) delete entry.takeHome;
+      recompute(entry);
+      editingId = null;
+      persistEntries();
+      renderHistory();
+    });
+  }
+
+  // ---- Calculate ----
+  function updateTakehome() {
+    if (!lastCalc) return;
+    const cashVal = $('cashTips').value;
+    const th = $('takehomeBlock');
+    if (cashVal === '') { th.style.display = 'none'; return; }
+    const cashLeft = parseFloat(cashVal) || 0;
+    lastCalc.cashTips = cashLeft;
+    lastCalc.takeHome = cashLeft;
+    th.style.display = 'block';
+    th.childNodes[0].nodeValue = fmt(cashLeft);
+  }
+
+  function calculate() {
+    const foodSales = parseFloat($('foodSales').value) || 0;
+    const barSales = parseFloat($('barSales').value) || 0;
+    const chargeTips = parseFloat($('chargeTips').value) || 0;
+    const posCalculated = parseFloat($('posCalc').value) || 0;
+
+    const tipoutFood = foodSales * (settings.foodPct / 100);
+    const tipoutBar = barSales * (settings.barPct / 100);
+    const tipoutTip = chargeTips * (settings.tipPct / 100);
+    const totalTipout = tipoutFood + tipoutBar + tipoutTip;
+    const whatYouOwe = posCalculated + totalTipout;
+    const totalSales = foodSales + barSales;
+    const tipoutPctOfSales = totalSales > 0 ? (totalTipout / totalSales * 100) : null;
+
+    lastCalc = { foodSales, barSales, chargeTips, posCalculated, totalTipout, net: whatYouOwe, ts: Date.now() };
+
+    $('resultAmount').textContent = fmt(Math.abs(whatYouOwe));
+    $('resultAmount').className = 'amount ' + (whatYouOwe >= 0 ? 'owe' : 'get');
+    $('resultCaption').textContent = whatYouOwe >= 0 ? 'you owe the restaurant' : 'the restaurant owes you';
+    $('breakdown').innerHTML = `
+      <div><span>total tipout${tipoutPctOfSales !== null ? ' (' + tipoutPctOfSales.toFixed(1) + '%)' : ''}</span><span>${fmt(totalTipout)}</span></div>
+      <div><span>POS calculated</span><span>${fmt(posCalculated)}</span></div>
+    `;
+    $('resultBlock').style.display = 'block';
+    $('cashTips').value = '';
+    $('takehomeBlock').style.display = 'none';
+  }
+
+  $('settingsToggle').addEventListener('click', () => {
+    const block = $('settingsBlock');
+    block.style.display = block.style.display === 'none' ? 'block' : 'none';
+  });
+  ['foodPct','barPct','tipPct'].forEach(id => $(id).addEventListener('change', saveSettings));
+
+  $('calcBtn').addEventListener('click', calculate);
+  $('cashTips').addEventListener('input', updateTakehome);
+
+  $('clearBtn').addEventListener('click', () => {
+    ['foodSales','barSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
+    $('resultBlock').style.display = 'none';
+    lastCalc = null;
+  });
+
+  $('saveBtn').addEventListener('click', () => {
+    if (!lastCalc) return;
+    entries.push(lastCalc);
+    persistEntries();
+    renderHistory();
+    ['foodSales','barSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
+    $('resultBlock').style.display = 'none';
+    lastCalc = null;
+  });
+
+  // ---- Stats ----
+  let statsPeriod = '7d';
+  let customStart = null;
+  let customEnd = null;
+
+  function getRangeBounds(period) {
+    const now = new Date();
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    if (period === '7d') {
+      return { start: endOfToday.getTime() - 7 * 24 * 60 * 60 * 1000, end: endOfToday.getTime() };
+    }
+    if (period === '30d') {
+      return { start: endOfToday.getTime() - 30 * 24 * 60 * 60 * 1000, end: endOfToday.getTime() };
+    }
+    if (period === 'month') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      return { start: start.getTime(), end: endOfToday.getTime() };
+    }
+    if (period === 'custom' && customStart && customEnd) {
+      const s = new Date(customStart + 'T00:00:00');
+      const e = new Date(customEnd + 'T23:59:59');
+      return { start: s.getTime(), end: e.getTime() };
+    }
+    return { start: endOfToday.getTime() - 7 * 24 * 60 * 60 * 1000, end: endOfToday.getTime() };
+  }
+
+  document.querySelectorAll('.period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const period = btn.getAttribute('data-period');
+      statsPeriod = period;
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.toggle('active', b === btn));
+      $('customRangeRow').style.display = period === 'custom' ? 'flex' : 'none';
+      if (period !== 'custom') renderStats();
+    });
+  });
+  $('applyRange').addEventListener('click', () => {
+    customStart = $('rangeStart').value;
+    customEnd = $('rangeEnd').value;
+    if (customStart && customEnd) renderStats();
+  });
+
+  function renderStats() {
+    const el = $('statsContent');
+    if (!entries.length) {
+      el.innerHTML = '<div class="stats-empty">Log a few shifts to see your numbers here.</div>';
+      return;
+    }
+    const { start, end } = getRangeBounds(statsPeriod);
+    const inRange = entries.filter(e => e.ts >= start && e.ts <= end);
+
+    if (!inRange.length) {
+      el.innerHTML = '<div class="stats-empty">No shifts logged in this period.</div>';
+      return;
+    }
+
+    const withCash = inRange.filter(e => typeof e.takeHome === 'number');
+    const avgTakehome = withCash.length ? withCash.reduce((s, e) => s + e.takeHome, 0) / withCash.length : 0;
+    const totalTakehome = withCash.reduce((s, e) => s + e.takeHome, 0);
+    const avgSales = inRange.reduce((s, e) => s + e.foodSales + e.barSales, 0) / inRange.length;
+    const totalSales = inRange.reduce((s, e) => s + e.foodSales + e.barSales, 0);
+
+    const byDay = Array.from({length: 7}, () => ({ sales: 0, count: 0 }));
+    inRange.forEach(e => {
+      const dow = new Date(e.ts).getDay();
+      byDay[dow].sales += (e.foodSales + e.barSales);
+      byDay[dow].count += 1;
+    });
+    const dayAverages = byDay.map((d, i) => ({ day: DAY_NAMES[i], avg: d.count ? d.sales / d.count : 0, count: d.count }));
+    const maxAvg = Math.max(1, ...dayAverages.map(d => d.avg));
+
+    el.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card"><div class="label">Avg take-home / shift</div><div class="value">${fmt(avgTakehome)}</div></div>
+        <div class="stat-card"><div class="label">Avg sales / shift</div><div class="value">${fmt(avgSales)}</div></div>
+        <div class="stat-card"><div class="label">Total take-home</div><div class="value">${fmt(totalTakehome)}</div></div>
+        <div class="stat-card"><div class="label">Total sales</div><div class="value">${fmt(totalSales)}</div></div>
+      </div>
+      <div class="stats-section-title">Avg sales by day worked</div>
+      ${dayAverages.map(d => `
+        <div class="day-row">
+          <span class="day-label">${d.day}</span>
+          <span class="bar-track"><span class="bar-fill" style="width:${(d.avg / maxAvg * 100).toFixed(0)}%"></span></span>
+          <span class="day-val">${d.count ? fmt(d.avg) : '—'}</span>
+        </div>
+      `).join('')}
+      <div class="caption" style="margin-top:10px;font-size:11px;text-align:left;">based on ${inRange.length} shift${inRange.length === 1 ? '' : 's'} in this period${withCash.length ? `, ${withCash.length} with take-home recorded` : ''}</div>
+    `;
+  }
+
+  loadSettings();
+  loadEntries();
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').catch(err => console.log('SW registration failed', err));
+    });
+  }
+})();
+</script>
+</body>
+</html>
