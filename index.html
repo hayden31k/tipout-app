@@ -199,10 +199,59 @@
 
   .stats-empty { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); text-align: center; padding: 20px 0; }
   .stats-section-title { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.06em; color: var(--ink-soft); text-transform: uppercase; margin: 20px 0 8px; }
+
+  .signout-btn {
+    position: absolute; top: 10px; right: 10px; background: none; border: 1.3px solid var(--ink-soft);
+    color: var(--ink-soft); font-family: 'Space Mono', monospace; font-size: 10px; border-radius: 3px;
+    padding: 3px 8px; cursor: pointer;
+  }
+
+  /* Login screen */
+  #login-screen {
+    --bg: #16211B; --bg-2: #1D2C22; --paper: #F0EAD6; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E;
+    font-family: 'Archivo', sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 20% 10%, var(--bg-2) 0%, transparent 45%),
+      radial-gradient(circle at 80% 90%, var(--bg-2) 0%, transparent 45%);
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  #login-screen * { box-sizing: border-box; }
+  #login-screen .login-card {
+    background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 340px; width: 100%;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35); text-align: center;
+  }
+  #login-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 20px; margin: 0 0 6px; }
+  #login-screen .login-sub { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); margin: 0 0 20px; }
+  #login-screen input[type=email] {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--rule); border-radius: 3px;
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink); margin-bottom: 12px;
+  }
+  #login-screen input[type=email]:focus { outline: none; border-color: var(--ink); }
+  #login-screen button {
+    width: 100%; padding: 12px; background: var(--ink); color: var(--paper); border: none; border-radius: 3px;
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+  #login-screen button:disabled { opacity: 0.6; cursor: default; }
+  #login-screen .login-status { margin-top: 14px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); min-height: 16px; }
 </style>
 </head>
 <body>
-<div id="tipout-root">
+<div id="login-screen" style="display:none;">
+  <div class="login-card">
+    <h1>Daily Tipout</h1>
+    <p class="login-sub">Sign in with your email to continue</p>
+    <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email" inputmode="email" />
+    <button id="sendMagicLinkBtn">Send magic link</button>
+    <div class="login-status" id="loginStatus"></div>
+  </div>
+</div>
+<div id="tipout-root" style="display:none;">
   <div class="ticket-wrap">
     <div class="masthead">
       <h1>Daily Tipout</h1>
@@ -294,6 +343,7 @@
 
     <div class="page" id="pageStats">
       <div class="ticket" id="statsTicket">
+        <button class="signout-btn" id="signOutBtn">Sign out</button>
         <div class="perf"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 
         <div class="period-row" id="periodRow">
@@ -314,6 +364,58 @@
     </div>
   </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function() {
+  const SUPABASE_URL = 'https://eltscodojowvehqsrkau.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_F8zIeYxKkTQnhoOlXPqg_A_qGDzg8Zz';
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const loginScreen = document.getElementById('login-screen');
+  const appRoot = document.getElementById('tipout-root');
+  const emailInput = document.getElementById('loginEmail');
+  const sendBtn = document.getElementById('sendMagicLinkBtn');
+  const statusEl = document.getElementById('loginStatus');
+  const signOutBtn = document.getElementById('signOutBtn');
+
+  function showApp() {
+    loginScreen.style.display = 'none';
+    appRoot.style.display = 'block';
+  }
+  function showLogin() {
+    appRoot.style.display = 'none';
+    loginScreen.style.display = 'flex';
+  }
+
+  supabaseClient.auth.getSession().then(({ data }) => {
+    if (data.session) showApp(); else showLogin();
+  });
+
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    if (session) showApp(); else showLogin();
+  });
+
+  sendBtn.addEventListener('click', async () => {
+    const email = emailInput.value.trim();
+    if (!email) { statusEl.textContent = 'Enter your email first.'; return; }
+    sendBtn.disabled = true;
+    statusEl.textContent = 'Sending...';
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin + window.location.pathname }
+    });
+    sendBtn.disabled = false;
+    statusEl.textContent = error ? error.message : `Check ${email} for your magic link.`;
+  });
+
+  emailInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') sendBtn.click();
+  });
+
+  signOutBtn.addEventListener('click', () => supabaseClient.auth.signOut());
+})();
+</script>
 
 <script>
 (function() {
