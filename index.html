@@ -618,6 +618,7 @@
     if (isSignedIn()) {
       const { data, error } = await window.supabaseClient
         .from('shifts').select('*').eq('user_id', currentUser.id).order('ts', { ascending: false });
+      console.log('[tipout] shifts load for user', currentUser.id, { data, error });
       entries = (!error && data) ? data.map(rowToEntry) : [];
       if (error) console.error('shifts load failed', error);
     } else {
