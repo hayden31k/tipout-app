@@ -229,16 +229,21 @@
   }
   #login-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 20px; margin: 0 0 6px; }
   #login-screen .login-sub { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); margin: 0 0 20px; }
-  #login-screen input[type=email] {
+  #login-screen input[type=email], #login-screen input[type=text] {
     width: 100%; padding: 10px 12px; border: 1.5px solid var(--rule); border-radius: 3px;
     background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink); margin-bottom: 12px;
+    letter-spacing: 0.04em; text-align: center;
   }
-  #login-screen input[type=email]:focus { outline: none; border-color: var(--ink); }
+  #login-screen input[type=email]:focus, #login-screen input[type=text]:focus { outline: none; border-color: var(--ink); }
   #login-screen button {
     width: 100%; padding: 12px; background: var(--ink); color: var(--paper); border: none; border-radius: 3px;
     font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer;
   }
   #login-screen button:disabled { opacity: 0.6; cursor: default; }
+  #login-screen .resend-link {
+    width: auto; background: none; border: none; color: var(--ink-soft); font-family: 'Space Mono', monospace;
+    font-weight: 400; font-size: 11px; text-decoration: underline; cursor: pointer; padding: 4px 0 0; margin-top: 10px;
+  }
   #login-screen .login-status { margin-top: 14px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); min-height: 16px; }
 </style>
 </head>
@@ -247,9 +252,16 @@
   <div class="login-card">
     <button class="login-dismiss" id="loginDismissBtn" aria-label="Close">&times;</button>
     <h1>Daily Tipout</h1>
-    <p class="login-sub">Sign in with your email to continue</p>
-    <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email" inputmode="email" />
-    <button id="sendMagicLinkBtn">Send magic link</button>
+    <p class="login-sub">Sign in to save your data and access it on any device</p>
+    <div id="loginEmailStep">
+      <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email" inputmode="email" />
+      <button id="sendCodeBtn">Send code</button>
+    </div>
+    <div id="loginCodeStep" style="display:none;">
+      <input type="text" id="loginCode" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code" />
+      <button id="verifyCodeBtn">Verify</button>
+      <button type="button" class="resend-link" id="resendCodeBtn">Resend code</button>
+    </div>
     <div class="login-status" id="loginStatus"></div>
   </div>
 </div>
@@ -376,20 +388,45 @@
   window.supabaseClient = supabaseClient;
 
   const loginScreen = document.getElementById('login-screen');
+  const emailStep = document.getElementById('loginEmailStep');
+  const codeStep = document.getElementById('loginCodeStep');
   const emailInput = document.getElementById('loginEmail');
-  const sendBtn = document.getElementById('sendMagicLinkBtn');
+  const codeInput = document.getElementById('loginCode');
+  const sendBtn = document.getElementById('sendCodeBtn');
+  const verifyBtn = document.getElementById('verifyCodeBtn');
+  const resendBtn = document.getElementById('resendCodeBtn');
   const statusEl = document.getElementById('loginStatus');
   const authCornerBtn = document.getElementById('authCornerBtn');
   const loginDismissBtn = document.getElementById('loginDismissBtn');
 
   let currentSession = null;
+  let pendingEmail = '';
 
+  function showEmailStep() {
+    emailStep.style.display = 'block';
+    codeStep.style.display = 'none';
+  }
+  function showCodeStep() {
+    emailStep.style.display = 'none';
+    codeStep.style.display = 'block';
+    codeInput.value = '';
+    codeInput.focus();
+  }
   function showLoginOverlay() {
     statusEl.textContent = '';
+    showEmailStep();
     loginScreen.style.display = 'flex';
   }
   function hideLoginOverlay() {
     loginScreen.style.display = 'none';
+  }
+
+  async function sendCode(email) {
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true }
+    });
+    return error;
   }
 
   function updateAuthUI(session) {
@@ -420,16 +457,42 @@
     if (!email) { statusEl.textContent = 'Enter your email first.'; return; }
     sendBtn.disabled = true;
     statusEl.textContent = 'Sending...';
-    const { error } = await supabaseClient.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin + window.location.pathname }
-    });
+    const error = await sendCode(email);
     sendBtn.disabled = false;
-    statusEl.textContent = error ? error.message : `Check ${email} for your magic link.`;
+    if (error) { statusEl.textContent = error.message; return; }
+    pendingEmail = email;
+    statusEl.textContent = `Check ${email} for your code.`;
+    showCodeStep();
+  });
+
+  verifyBtn.addEventListener('click', async () => {
+    const token = codeInput.value.trim();
+    if (!token) { statusEl.textContent = 'Enter the code from your email.'; return; }
+    verifyBtn.disabled = true;
+    statusEl.textContent = 'Verifying...';
+    const { error } = await supabaseClient.auth.verifyOtp({
+      email: pendingEmail,
+      token,
+      type: 'email',
+    });
+    verifyBtn.disabled = false;
+    if (error) { statusEl.textContent = error.message; }
+  });
+
+  resendBtn.addEventListener('click', async () => {
+    if (!pendingEmail) return;
+    resendBtn.disabled = true;
+    statusEl.textContent = 'Resending...';
+    const error = await sendCode(pendingEmail);
+    resendBtn.disabled = false;
+    statusEl.textContent = error ? error.message : `Check ${pendingEmail} for your code.`;
   });
 
   emailInput.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') sendBtn.click();
+  });
+  codeInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') verifyBtn.click();
   });
 })();
 </script>
