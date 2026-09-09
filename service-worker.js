@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tipout-cache-v3';
+const CACHE_NAME = 'tipout-cache-v5';
 const FILES_TO_CACHE = [
   './',
   './index.html',

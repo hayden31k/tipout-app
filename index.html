@@ -74,6 +74,17 @@
 
   .dashed { border: none; border-top: 1.5px dashed var(--rule); margin: 18px 0; }
 
+  .sign-row { display: flex; gap: 6px; margin: -6px 0 4px; justify-content: flex-end; }
+  .sign-btn {
+    padding: 5px 12px; border-radius: 12px; border: 1.3px solid var(--ink-soft);
+    background: transparent; color: var(--ink-soft); font-family: 'Space Mono', monospace;
+    font-size: 11px; cursor: pointer;
+  }
+  .sign-btn.active { background: var(--brass); border-color: var(--brass); color: #2B241A; font-weight: 700; }
+
+  .pos-input-wrap { display: flex; align-items: baseline; gap: 2px; }
+  .pos-sign-indicator { font-family: 'Space Mono', monospace; font-size: 16px; font-weight: 700; color: var(--ink); width: 10px; }
+
   .settings-toggle {
     background: none; border: none; font-family: 'Space Mono', monospace; font-size: 11px;
     color: var(--ink-soft); text-decoration: underline; cursor: pointer; padding: 0;
@@ -126,6 +137,7 @@
   .copy .meta { font-size: 12px; }
   .copy .meta .date { font-weight: 600; }
   .copy .meta .sub { color: var(--ink-soft); font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: -0.01em; word-break: break-word; }
+  .copy .meta .pct-line { margin-top: 2px; opacity: 0.85; font-size: 9.5px; }
   .copy .amtwrap { text-align: right; }
   .copy .amt { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 16px; }
   .copy .amt.owe { color: var(--owe); }
@@ -145,6 +157,7 @@
   .edit-card .field-row { margin: 8px 0; }
   .edit-card .field-row label { font-size: 12px; }
   .edit-card input[type=number] { width: 90px; font-size: 14px; }
+  .edit-card input[type=date] { width: 140px; font-size: 13px; font-family: 'Space Mono', monospace; border: none; border-bottom: 1.5px solid var(--rule); background: transparent; color: var(--ink); padding: 4px 2px; }
   .edit-row-btns { display: flex; gap: 8px; margin-top: 12px; }
   .edit-row-btns button {
     flex: 1; padding: 8px; border-radius: 3px; font-family: 'Archivo', sans-serif; font-weight: 600;
@@ -219,7 +232,14 @@
         </div>
         <div class="field-row">
           <label>POS calculated<span class="hint">from your end-of-night report</span></label>
-          <input type="number" inputmode="decimal" id="posCalc" placeholder="0.00" />
+          <div class="pos-input-wrap">
+            <span class="pos-sign-indicator" id="posSignIndicator">+</span>
+            <input type="number" inputmode="decimal" min="0" id="posCalc" placeholder="0.00" />
+          </div>
+        </div>
+        <div class="sign-row">
+          <button type="button" class="sign-btn active" id="posSignPos">Positive</button>
+          <button type="button" class="sign-btn" id="posSignNeg">Negative</button>
         </div>
 
         <hr class="dashed" />
@@ -304,10 +324,20 @@
   let entries = [];
   let lastCalc = null;
   let editingId = null;
+  let posSign = 1;
+  let editPosSign = 1;
 
   function fmt(n) {
     const sign = n < 0 ? '-' : '';
     return sign + '$' + Math.abs(n).toFixed(2);
+  }
+
+  function toDateInputValue(ts) {
+    const d = new Date(ts);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   }
 
   // ---- Tabs ----
@@ -388,6 +418,9 @@
       const totalTips = cashAmt + owedAmt;
       const totalSales = e.foodSales + e.barSales;
       const tipoutPct = totalSales > 0 && typeof e.totalTipout === 'number' ? (e.totalTipout / totalSales * 100) : null;
+      const grossTips = totalTips + (e.totalTipout || 0);
+      const grossPct = totalSales > 0 ? (grossTips / totalSales * 100) : null;
+      const netPct = totalSales > 0 ? (totalTips / totalSales * 100) : null;
 
       let subLine;
       if (e.net < 0) {
@@ -407,7 +440,11 @@
       return `<div class="copy ${receivedCls}" data-id="${e.ts}">
         <div class="meta">
           <div class="date">${dateStr}</div>
-          <div class="sub">F ${e.foodSales} &middot; D ${e.barSales}${tipoutPct !== null ? ' (' + tipoutPct.toFixed(1) + '%)' : ''}</div>
+          <div class="sub">F ${e.foodSales} &middot; D ${e.barSales}</div>
+          ${grossPct !== null ? `
+          <div class="sub pct-line">Tipout % &middot; ${tipoutPct.toFixed(1)}%</div>
+          <div class="sub pct-line">Gross tip % &middot; ${grossPct.toFixed(1)}%</div>
+          <div class="sub pct-line">Net tip % &middot; ${netPct.toFixed(1)}%</div>` : ''}
           ${receiveRow}
         </div>
         <div class="amtwrap">
@@ -445,11 +482,17 @@
   }
 
   function renderEditCard(e) {
+    editPosSign = e.posCalculated < 0 ? -1 : 1;
     return `<div class="edit-card" data-editid="${e.ts}">
+      <div class="field-row"><label>Date</label><input type="date" id="ed-date" value="${toDateInputValue(e.ts)}" /></div>
       <div class="field-row"><label>Food sales</label><input type="number" id="ed-food" value="${e.foodSales}" /></div>
       <div class="field-row"><label>Drink sales</label><input type="number" id="ed-bar" value="${e.barSales}" /></div>
       <div class="field-row"><label>Charge tip</label><input type="number" id="ed-charge" value="${e.chargeTips}" /></div>
-      <div class="field-row"><label>POS calculated</label><input type="number" id="ed-pos" value="${e.posCalculated}" /></div>
+      <div class="field-row"><label>POS calculated</label><input type="number" id="ed-pos" min="0" value="${Math.abs(e.posCalculated)}" /></div>
+      <div class="sign-row">
+        <button type="button" class="sign-btn ${editPosSign === 1 ? 'active' : ''}" id="ed-sign-pos">Positive</button>
+        <button type="button" class="sign-btn ${editPosSign === -1 ? 'active' : ''}" id="ed-sign-neg">Negative</button>
+      </div>
       <div class="field-row"><label>Cash left with</label><input type="number" id="ed-cash" value="${typeof e.cashTips === 'number' ? e.cashTips : ''}" /></div>
       <div class="edit-row-btns">
         <button class="cancel" id="ed-cancel">Cancel</button>
@@ -467,13 +510,30 @@
       persistEntries();
       renderHistory();
     });
+    $('ed-sign-pos').addEventListener('click', () => {
+      editPosSign = 1;
+      $('ed-sign-pos').classList.add('active');
+      $('ed-sign-neg').classList.remove('active');
+    });
+    $('ed-sign-neg').addEventListener('click', () => {
+      editPosSign = -1;
+      $('ed-sign-neg').classList.add('active');
+      $('ed-sign-pos').classList.remove('active');
+    });
     $('ed-save').addEventListener('click', () => {
       const entry = entries.find(e => e.ts === editingId);
       if (!entry) return;
+      const dateVal = $('ed-date').value;
+      if (dateVal) {
+        const [yyyy, mm, dd] = dateVal.split('-').map(Number);
+        const old = new Date(entry.ts);
+        const updated = new Date(yyyy, mm - 1, dd, old.getHours(), old.getMinutes(), old.getSeconds(), old.getMilliseconds());
+        entry.ts = updated.getTime();
+      }
       entry.foodSales = parseFloat($('ed-food').value) || 0;
       entry.barSales = parseFloat($('ed-bar').value) || 0;
       entry.chargeTips = parseFloat($('ed-charge').value) || 0;
-      entry.posCalculated = parseFloat($('ed-pos').value) || 0;
+      entry.posCalculated = Math.abs(parseFloat($('ed-pos').value) || 0) * editPosSign;
       const cashVal = $('ed-cash').value;
       entry.cashTips = cashVal === '' ? undefined : parseFloat(cashVal) || 0;
       if (entry.cashTips === undefined) delete entry.takeHome;
@@ -501,7 +561,7 @@
     const foodSales = parseFloat($('foodSales').value) || 0;
     const barSales = parseFloat($('barSales').value) || 0;
     const chargeTips = parseFloat($('chargeTips').value) || 0;
-    const posCalculated = parseFloat($('posCalc').value) || 0;
+    const posCalculated = Math.abs(parseFloat($('posCalc').value) || 0) * posSign;
 
     const tipoutFood = foodSales * (settings.foodPct / 100);
     const tipoutBar = barSales * (settings.barPct / 100);
@@ -534,10 +594,27 @@
   $('calcBtn').addEventListener('click', calculate);
   $('cashTips').addEventListener('input', updateTakehome);
 
+  $('posSignPos').addEventListener('click', () => {
+    posSign = 1;
+    $('posSignPos').classList.add('active');
+    $('posSignNeg').classList.remove('active');
+    $('posSignIndicator').textContent = '+';
+  });
+  $('posSignNeg').addEventListener('click', () => {
+    posSign = -1;
+    $('posSignNeg').classList.add('active');
+    $('posSignPos').classList.remove('active');
+    $('posSignIndicator').textContent = '-';
+  });
+
   $('clearBtn').addEventListener('click', () => {
     ['foodSales','barSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
     $('resultBlock').style.display = 'none';
     lastCalc = null;
+    posSign = 1;
+    $('posSignPos').classList.add('active');
+    $('posSignNeg').classList.remove('active');
+    $('posSignIndicator').textContent = '+';
   });
 
   $('saveBtn').addEventListener('click', () => {
@@ -548,6 +625,10 @@
     ['foodSales','barSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
     $('resultBlock').style.display = 'none';
     lastCalc = null;
+    posSign = 1;
+    $('posSignPos').classList.add('active');
+    $('posSignNeg').classList.remove('active');
+    $('posSignIndicator').textContent = '+';
   });
 
   // ---- Stats ----
@@ -610,6 +691,9 @@
     const totalTakehome = inRange.reduce((s, e) => s + tipsFor(e), 0);
     const avgSales = inRange.reduce((s, e) => s + e.foodSales + e.barSales, 0) / inRange.length;
     const totalSales = inRange.reduce((s, e) => s + e.foodSales + e.barSales, 0);
+    const totalGrossTips = inRange.reduce((s, e) => s + tipsFor(e) + (e.totalTipout || 0), 0);
+    const grossTipPct = totalSales > 0 ? (totalGrossTips / totalSales * 100) : null;
+    const netTipPct = totalSales > 0 ? (totalTakehome / totalSales * 100) : null;
 
     const byDay = Array.from({length: 7}, () => ({ sales: 0, count: 0 }));
     inRange.forEach(e => {
@@ -621,11 +705,13 @@
     const maxAvg = Math.max(1, ...dayAverages.map(d => d.avg));
 
     el.innerHTML = `
-      <div class="stat-grid">
-        <div class="stat-card"><div class="label">Avg total tips / shift</div><div class="value">${fmt(avgTakehome)}</div></div>
+      <div class="stat-grid stat-grid-6">
+        <div class="stat-card"><div class="label">Total sales</div><div class="value">${fmt(totalSales)}</div></div>
         <div class="stat-card"><div class="label">Avg sales / shift</div><div class="value">${fmt(avgSales)}</div></div>
         <div class="stat-card"><div class="label">Total tips</div><div class="value">${fmt(totalTakehome)}</div></div>
-        <div class="stat-card"><div class="label">Total sales</div><div class="value">${fmt(totalSales)}</div></div>
+        <div class="stat-card"><div class="label">Avg tips / shift</div><div class="value">${fmt(avgTakehome)}</div></div>
+        <div class="stat-card"><div class="label">Gross tip %</div><div class="value">${grossTipPct !== null ? grossTipPct.toFixed(1) + '%' : '—'}</div></div>
+        <div class="stat-card"><div class="label">Net tip % (after tipout)</div><div class="value">${netTipPct !== null ? netTipPct.toFixed(1) + '%' : '—'}</div></div>
       </div>
       <div class="stats-section-title">Avg sales by day worked</div>
       ${dayAverages.map(d => `
