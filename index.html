@@ -206,16 +206,13 @@
     padding: 3px 8px; cursor: pointer;
   }
 
-  /* Login screen */
+  /* Login overlay */
   #login-screen {
     --bg: #16211B; --bg-2: #1D2C22; --paper: #F0EAD6; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E;
     font-family: 'Archivo', sans-serif;
     color: var(--ink);
-    background: var(--bg);
-    background-image:
-      radial-gradient(circle at 20% 10%, var(--bg-2) 0%, transparent 45%),
-      radial-gradient(circle at 80% 90%, var(--bg-2) 0%, transparent 45%);
-    min-height: 100vh;
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(22, 33, 27, 0.92);
     align-items: center;
     justify-content: center;
     padding: 24px;
@@ -223,8 +220,12 @@
   }
   #login-screen * { box-sizing: border-box; }
   #login-screen .login-card {
-    background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 340px; width: 100%;
+    position: relative; background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 340px; width: 100%;
     box-shadow: 0 18px 40px rgba(0,0,0,0.35); text-align: center;
+  }
+  #login-screen .login-dismiss {
+    position: absolute; top: 8px; right: 8px; width: auto; padding: 4px 9px; background: none;
+    border: none; color: var(--ink-soft); font-size: 18px; line-height: 1; cursor: pointer;
   }
   #login-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 20px; margin: 0 0 6px; }
   #login-screen .login-sub { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); margin: 0 0 20px; }
@@ -244,6 +245,7 @@
 <body>
 <div id="login-screen" style="display:none;">
   <div class="login-card">
+    <button class="login-dismiss" id="loginDismissBtn" aria-label="Close">&times;</button>
     <h1>Daily Tipout</h1>
     <p class="login-sub">Sign in with your email to continue</p>
     <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email" inputmode="email" />
@@ -251,7 +253,7 @@
     <div class="login-status" id="loginStatus"></div>
   </div>
 </div>
-<div id="tipout-root" style="display:none;">
+<div id="tipout-root">
   <div class="ticket-wrap">
     <div class="masthead">
       <h1>Daily Tipout</h1>
@@ -343,7 +345,7 @@
 
     <div class="page" id="pageStats">
       <div class="ticket" id="statsTicket">
-        <button class="signout-btn" id="signOutBtn">Sign out</button>
+        <button class="signout-btn" id="authCornerBtn">Sign in</button>
         <div class="perf"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 
         <div class="period-row" id="periodRow">
@@ -371,30 +373,47 @@
   const SUPABASE_URL = 'https://eltscodojowvehqsrkau.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_F8zIeYxKkTQnhoOlXPqg_A_qGDzg8Zz';
   const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  window.supabaseClient = supabaseClient;
 
   const loginScreen = document.getElementById('login-screen');
-  const appRoot = document.getElementById('tipout-root');
   const emailInput = document.getElementById('loginEmail');
   const sendBtn = document.getElementById('sendMagicLinkBtn');
   const statusEl = document.getElementById('loginStatus');
-  const signOutBtn = document.getElementById('signOutBtn');
+  const authCornerBtn = document.getElementById('authCornerBtn');
+  const loginDismissBtn = document.getElementById('loginDismissBtn');
 
-  function showApp() {
-    loginScreen.style.display = 'none';
-    appRoot.style.display = 'block';
-  }
-  function showLogin() {
-    appRoot.style.display = 'none';
+  let currentSession = null;
+
+  function showLoginOverlay() {
+    statusEl.textContent = '';
     loginScreen.style.display = 'flex';
   }
+  function hideLoginOverlay() {
+    loginScreen.style.display = 'none';
+  }
 
-  supabaseClient.auth.getSession().then(({ data }) => {
-    if (data.session) showApp(); else showLogin();
-  });
+  function updateAuthUI(session) {
+    currentSession = session;
+    authCornerBtn.textContent = session ? 'Sign out' : 'Sign in';
+    window.dispatchEvent(new CustomEvent('tipout-auth-change', { detail: { user: session ? session.user : null } }));
+  }
+
+  supabaseClient.auth.getSession().then(({ data }) => updateAuthUI(data.session));
 
   supabaseClient.auth.onAuthStateChange((_event, session) => {
-    if (session) showApp(); else showLogin();
+    updateAuthUI(session);
+    if (session) hideLoginOverlay();
   });
+
+  authCornerBtn.addEventListener('click', () => {
+    if (currentSession) {
+      supabaseClient.auth.signOut();
+    } else {
+      showLoginOverlay();
+    }
+  });
+
+  loginDismissBtn.addEventListener('click', hideLoginOverlay);
 
   sendBtn.addEventListener('click', async () => {
     const email = emailInput.value.trim();
@@ -412,8 +431,6 @@
   emailInput.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') sendBtn.click();
   });
-
-  signOutBtn.addEventListener('click', () => supabaseClient.auth.signOut());
 })();
 </script>
 
@@ -428,6 +445,49 @@
   let editingId = null;
   let posSign = 1;
   let editPosSign = 1;
+  let currentUser = null;
+  const isSignedIn = () => !!currentUser;
+
+  // ---- Supabase <-> local field mapping ----
+  function entryToRow(e, uid) {
+    if (!e.id) e.id = crypto.randomUUID();
+    return {
+      id: e.id,
+      user_id: uid,
+      ts: e.ts,
+      food_sales: e.foodSales,
+      bar_sales: e.barSales,
+      charge_tips: e.chargeTips,
+      pos_calculated: e.posCalculated,
+      total_tipout: e.totalTipout,
+      net: e.net,
+      cash_tips: (typeof e.cashTips === 'number' && !isNaN(e.cashTips)) ? e.cashTips : null,
+      take_home: (typeof e.takeHome === 'number' && !isNaN(e.takeHome)) ? e.takeHome : null,
+      received: !!e.received,
+    };
+  }
+  function rowToEntry(r) {
+    const e = {
+      id: r.id,
+      ts: r.ts,
+      foodSales: r.food_sales,
+      barSales: r.bar_sales,
+      chargeTips: r.charge_tips,
+      posCalculated: r.pos_calculated,
+      totalTipout: r.total_tipout,
+      net: r.net,
+      received: !!r.received,
+    };
+    if (r.cash_tips !== null && r.cash_tips !== undefined) e.cashTips = r.cash_tips;
+    if (r.take_home !== null && r.take_home !== undefined) e.takeHome = r.take_home;
+    return e;
+  }
+  function settingsToRow(s, uid) {
+    return { user_id: uid, food_pct: s.foodPct, bar_pct: s.barPct, tip_pct: s.tipPct };
+  }
+  function rowToSettings(r) {
+    return { foodPct: r.food_pct, barPct: r.bar_pct, tipPct: r.tip_pct };
+  }
 
   function fmt(n) {
     const sign = n < 0 ? '-' : '';
@@ -458,36 +518,71 @@
   $('tabStats').addEventListener('click', () => showPage('stats'));
 
   // ---- Settings ----
-  function loadSettings() {
-    try {
-      const raw = localStorage.getItem('tipout-settings');
-      if (raw) settings = JSON.parse(raw);
-    } catch (e) { /* no settings saved yet */ }
+  async function loadSettings() {
+    if (isSignedIn()) {
+      const { data, error } = await window.supabaseClient
+        .from('user_settings').select('*').eq('user_id', currentUser.id).maybeSingle();
+      settings = (!error && data) ? rowToSettings(data) : { ...DEFAULT_SETTINGS };
+      if (error) console.error('settings load failed', error);
+    } else {
+      try {
+        const raw = localStorage.getItem('tipout-settings');
+        settings = raw ? JSON.parse(raw) : { ...DEFAULT_SETTINGS };
+      } catch (e) { settings = { ...DEFAULT_SETTINGS }; }
+    }
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
   }
-  function saveSettings() {
+  async function saveSettings() {
     settings = {
       foodPct: parseFloat($('foodPct').value) || 0,
       barPct: parseFloat($('barPct').value) || 0,
       tipPct: parseFloat($('tipPct').value) || 0,
     };
-    try { localStorage.setItem('tipout-settings', JSON.stringify(settings)); }
-    catch (e) { console.error('settings save failed', e); }
+    if (isSignedIn()) {
+      const { error } = await window.supabaseClient
+        .from('user_settings').upsert(settingsToRow(settings, currentUser.id));
+      if (error) console.error('settings save failed', error);
+    } else {
+      try { localStorage.setItem('tipout-settings', JSON.stringify(settings)); }
+      catch (e) { console.error('settings save failed', e); }
+    }
   }
 
   // ---- Entries ----
-  function loadEntries() {
-    try {
-      const raw = localStorage.getItem('tipout-entries');
-      if (raw) entries = JSON.parse(raw);
-    } catch (e) { entries = []; }
+  async function loadEntries() {
+    if (isSignedIn()) {
+      const { data, error } = await window.supabaseClient
+        .from('shifts').select('*').eq('user_id', currentUser.id).order('ts', { ascending: false });
+      entries = (!error && data) ? data.map(rowToEntry) : [];
+      if (error) console.error('shifts load failed', error);
+    } else {
+      try {
+        const raw = localStorage.getItem('tipout-entries');
+        entries = raw ? JSON.parse(raw) : [];
+      } catch (e) { entries = []; }
+    }
     renderHistory();
   }
-  function persistEntries() {
-    try { localStorage.setItem('tipout-entries', JSON.stringify(entries)); }
-    catch (e) { console.error('entries save failed', e); }
+  async function persistEntries() {
+    if (!isSignedIn()) {
+      try { localStorage.setItem('tipout-entries', JSON.stringify(entries)); }
+      catch (e) { console.error('entries save failed', e); }
+      return;
+    }
+    const uid = currentUser.id;
+    if (entries.length) {
+      const rows = entries.map(e => entryToRow(e, uid));
+      const { error: upsertErr } = await window.supabaseClient.from('shifts').upsert(rows, { onConflict: 'id' });
+      if (upsertErr) { console.error('shifts save failed', upsertErr); return; }
+    }
+    const keepIds = entries.map(e => e.id);
+    const delBase = window.supabaseClient.from('shifts').delete().eq('user_id', uid);
+    const { error: delErr } = keepIds.length
+      ? await delBase.not('id', 'in', `(${keepIds.join(',')})`)
+      : await delBase;
+    if (delErr) console.error('shifts cleanup failed', delErr);
   }
 
   function recompute(e) {
@@ -673,7 +768,7 @@
     const totalSales = foodSales + barSales;
     const tipoutPctOfSales = totalSales > 0 ? (totalTipout / totalSales * 100) : null;
 
-    lastCalc = { foodSales, barSales, chargeTips, posCalculated, totalTipout, net: whatYouOwe, ts: Date.now() };
+    lastCalc = { id: crypto.randomUUID(), foodSales, barSales, chargeTips, posCalculated, totalTipout, net: whatYouOwe, ts: Date.now() };
 
     $('resultAmount').textContent = fmt(Math.abs(whatYouOwe));
     $('resultAmount').className = 'amount ' + (whatYouOwe >= 0 ? 'owe' : 'get');
@@ -827,8 +922,17 @@
     `;
   }
 
-  loadSettings();
-  loadEntries();
+  let authInitialized = false;
+  window.addEventListener('tipout-auth-change', async (ev) => {
+    const user = ev.detail.user;
+    const prevId = currentUser ? currentUser.id : null;
+    const nextId = user ? user.id : null;
+    if (authInitialized && prevId === nextId) return;
+    authInitialized = true;
+    currentUser = user;
+    await loadSettings();
+    await loadEntries();
+  });
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
