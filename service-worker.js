@@ -23,6 +23,15 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Lets the page ask which cache this exact SW instance is running, for the
+// on-screen debug panel - proves whether a given page load's controller (if
+// any) is actually this current SW or a stale one that hasn't updated yet.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'TIPOUT_GET_VERSION') {
+    event.ports[0].postMessage({ cacheName: CACHE_NAME });
+  }
+});
+
 function isIndexRequest(request) {
   if (request.mode === 'navigate') return true;
   const path = new URL(request.url).pathname;
@@ -31,6 +40,14 @@ function isIndexRequest(request) {
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
+
+  if (new URL(request.url).pathname.endsWith('/version.json')) {
+    // Always network, never cached: the page deliberately cache-busts this
+    // URL with a unique query string on every check, so caching it here
+    // would just accumulate one Cache Storage entry per load forever.
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
 
   if (isIndexRequest(request)) {
     // Network-first: always serve the latest index.html when online, so app

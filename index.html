@@ -631,11 +631,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function() {
+  // Permanent (NOT part of the removable TEMP DEBUG block below) - identifies
+  // this exact deployed copy of index.html. Used both for the on-screen
+  // debug badge and by the stale-document self-heal check further down, so
+  // it must keep working after TEMP DEBUG is eventually stripped out.
+  // Bump on every deploy.
+  const APP_VERSION = 'debug-2026-09-10-d';
+
   // ===== TEMP DEBUG (remove once signed-out-on-reload bug is fixed) =====
   // Bump this string on every commit that touches this debug system, so a
   // glance at the pinned on-screen badge proves whether the phone is
   // actually running this code or a stale cached copy.
-  const DEBUG_BUILD = 'debug-2026-09-10-c';
+  const DEBUG_BUILD = APP_VERSION;
   function debugLog(line) {
     console.log('[tipout][debug]', line);
     const el = document.getElementById('debugPanel');
@@ -698,8 +705,74 @@
   } catch (e) {
     debugLog('localStorage read failed: ' + e.message);
   }
+  // Which service worker (if any) actually controls THIS load, and did its
+  // fetch handler even run for the navigation? Navigation Timing's
+  // workerStart is only nonzero when a service worker's fetch event handled
+  // the navigation request - it's the definitive way to tell whether the
+  // SW's network-first/no-store logic ran at all, versus the browser having
+  // gone straight to plain HTTP (and its normal cache) instead. Per spec
+  // (and confirmed by MDN), a "forced reload" - which is what mobile
+  // browsers map pull-to-refresh to, having no Shift+Reload key combo -
+  // bypasses the service worker entirely: controller is null and the fetch
+  // handler never runs, for that one navigation.
+  try {
+    const navEntry = performance.getEntriesByType('navigation')[0];
+    const swFetchHandlerRan = !!(navEntry && navEntry.workerStart > 0);
+    debugLog('navigation: type=' + (navEntry ? navEntry.type : 'unknown')
+      + ' workerStart=' + (navEntry ? navEntry.workerStart.toFixed(1) : 'n/a')
+      + ' fetchStart=' + (navEntry ? navEntry.fetchStart.toFixed(1) : 'n/a')
+      + ' swFetchHandlerRan=' + swFetchHandlerRan);
+    if ('serviceWorker' in navigator) {
+      const ctrl = navigator.serviceWorker.controller;
+      debugLog('serviceWorker.controller=' + (ctrl ? (ctrl.scriptURL + ' state=' + ctrl.state) : 'NONE (page is uncontrolled for this load - SW was bypassed)'));
+      if (ctrl) {
+        const mc = new MessageChannel();
+        mc.port1.onmessage = (e) => debugLog('controlling SW reports CACHE_NAME=' + (e.data && e.data.cacheName));
+        ctrl.postMessage({ type: 'TIPOUT_GET_VERSION' }, [mc.port2]);
+      }
+    }
+  } catch (e) {
+    debugLog('navigation/controller probe failed: ' + e.message);
+  }
   window.__tipoutDebugLog = debugLog;
   // ===== END TEMP DEBUG =====
+
+  // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
+  // service worker entirely for the top-level navigation, per spec, so the
+  // SW's no-store fix above never runs for it; the request falls through to
+  // plain HTTP, which GitHub Pages serves with "Cache-Control: max-age=600"
+  // that we can't override on static hosting) =====
+  // This fetches a tiny version.json with a cache-busting query string, so
+  // no cache layer (browser HTTP cache or this SW) can possibly have a
+  // stale entry for it already - it always reflects what's really deployed.
+  // If it doesn't match the version baked into the document we're currently
+  // running, this document is stale (regardless of *why*), so force one
+  // genuinely-fresh reload via a URL with a novel query string, which no
+  // cache can have an entry for yet either.
+  (function staleDocumentSelfHeal() {
+    const RELOAD_FLAG = 'tipout-stale-reload-attempted';
+    fetch('./version.json?_=' + Date.now(), { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.build === APP_VERSION) {
+          debugLog('version check: OK (' + APP_VERSION + ') - this document is current');
+          sessionStorage.removeItem(RELOAD_FLAG);
+          return;
+        }
+        debugLog('version check: MISMATCH - running ' + APP_VERSION + ', server has ' + data.build);
+        if (sessionStorage.getItem(RELOAD_FLAG) === APP_VERSION) {
+          debugLog('version check: already forced a reload for ' + APP_VERSION + ' - not looping');
+          return;
+        }
+        sessionStorage.setItem(RELOAD_FLAG, APP_VERSION);
+        debugLog('version check: forcing a fresh reload via cache-busted URL...');
+        location.replace(location.pathname + '?_fresh=' + Date.now());
+      })
+      .catch((err) => {
+        debugLog('version check: fetch failed (' + err.message + ') - likely offline, skipping');
+      });
+  })();
+  // ===== END STALE-DOCUMENT SELF-HEAL =====
 
   const SUPABASE_URL = 'https://eltscodojowvehqsrkau.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_F8zIeYxKkTQnhoOlXPqg_A_qGDzg8Zz';
