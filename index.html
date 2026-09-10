@@ -301,6 +301,43 @@
     font-weight: 400; font-size: 11px; text-decoration: underline; cursor: pointer; padding: 4px 0 0; margin-top: 10px;
   }
   #login-screen .login-status { margin-top: 14px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); min-height: 16px; }
+
+  /* Onboarding overlay */
+  #onboarding-screen {
+    --bg: #16211B; --bg-2: #1D2C22; --paper: #F0EAD6; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E; --owe: #B33A3A;
+    font-family: 'Archivo', sans-serif;
+    color: var(--ink);
+    position: fixed; inset: 0; z-index: 1200;
+    background: rgba(22, 33, 27, 0.92);
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  #onboarding-screen * { box-sizing: border-box; }
+  #onboarding-screen .onboarding-card {
+    position: relative; background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 360px; width: 100%;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+  }
+  #onboarding-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 20px; margin: 0 0 6px; text-align: center; }
+  #onboarding-screen .onboarding-sub { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); margin: 0 0 20px; text-align: center; }
+  #onboarding-screen label {
+    display: block; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 14px 0 4px;
+  }
+  #onboarding-screen input[type=text], #onboarding-screen input[type=number] {
+    width: 100%; padding: 9px 10px; border: 1.5px solid var(--rule); border-radius: 3px;
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink);
+  }
+  #onboarding-screen input:focus { outline: none; border-color: var(--ink); }
+  #onboarding-screen .onboarding-pct-row { display: flex; gap: 8px; }
+  #onboarding-screen .onboarding-pct-row > div { flex: 1; }
+  #onboarding-screen button {
+    width: 100%; margin-top: 20px; padding: 12px; background: var(--ink); color: var(--paper); border: none; border-radius: 3px;
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+  #onboarding-screen button:disabled { opacity: 0.6; cursor: default; }
+  #onboarding-screen .onboarding-status { margin-top: 12px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--owe); min-height: 16px; text-align: center; }
 </style>
 </head>
 <body>
@@ -319,6 +356,32 @@
       <button type="button" class="resend-link" id="resendCodeBtn">Resend code</button>
     </div>
     <div class="login-status" id="loginStatus"></div>
+  </div>
+</div>
+<div id="onboarding-screen" style="display:none;">
+  <div class="onboarding-card">
+    <h1>Welcome! Let's set up your restaurant.</h1>
+    <p class="onboarding-sub">A couple details and you're ready to log shifts.</p>
+    <label for="onboardingName">Your name</label>
+    <input type="text" id="onboardingName" placeholder="Your name" />
+    <label for="onboardingRestaurantName">Restaurant name</label>
+    <input type="text" id="onboardingRestaurantName" placeholder="e.g. The Blue Door" />
+    <div class="onboarding-pct-row">
+      <div>
+        <label for="onboardingFoodPct">Food %</label>
+        <input type="number" id="onboardingFoodPct" step="0.1" inputmode="decimal" />
+      </div>
+      <div>
+        <label for="onboardingBarPct">Bar %</label>
+        <input type="number" id="onboardingBarPct" step="0.1" inputmode="decimal" />
+      </div>
+      <div>
+        <label for="onboardingTipPct">Tip %</label>
+        <input type="number" id="onboardingTipPct" step="0.1" inputmode="decimal" />
+      </div>
+    </div>
+    <button id="onboardingGetStartedBtn">Get started</button>
+    <div class="onboarding-status" id="onboardingStatus"></div>
   </div>
 </div>
 <div class="menu-overlay" id="menuOverlay"></div>
@@ -676,13 +739,7 @@
     $('menuDisplayName').value = settings.displayName || '';
     renderGreeting();
   }
-  async function saveSettings() {
-    settings = {
-      foodPct: parseFloat($('foodPct').value) || 0,
-      barPct: parseFloat($('barPct').value) || 0,
-      tipPct: parseFloat($('tipPct').value) || 0,
-      displayName: $('menuDisplayName').value.trim(),
-    };
+  async function persistSettings() {
     if (isSignedIn()) {
       const { error } = await window.supabaseClient
         .from('user_settings').upsert(settingsToRow(settings, currentUser.id));
@@ -692,6 +749,15 @@
       catch (e) { console.error('settings save failed', e); }
     }
     renderGreeting();
+  }
+  async function saveSettings() {
+    settings = {
+      foodPct: parseFloat($('foodPct').value) || 0,
+      barPct: parseFloat($('barPct').value) || 0,
+      tipPct: parseFloat($('tipPct').value) || 0,
+      displayName: $('menuDisplayName').value.trim(),
+    };
+    await persistSettings();
   }
 
   // ---- Restaurants ----
@@ -717,6 +783,69 @@
       else localStorage.removeItem(ACTIVE_RESTAURANT_KEY);
     } catch (e) {}
   }
+
+  // ---- Onboarding (first restaurant) ----
+  function showOnboarding() {
+    $('onboardingName').value = settings.displayName || '';
+    $('onboardingRestaurantName').value = '';
+    $('onboardingFoodPct').value = settings.foodPct;
+    $('onboardingBarPct').value = settings.barPct;
+    $('onboardingTipPct').value = settings.tipPct;
+    $('onboardingStatus').textContent = '';
+    $('onboarding-screen').style.display = 'flex';
+  }
+  function hideOnboarding() {
+    $('onboarding-screen').style.display = 'none';
+  }
+  $('onboardingGetStartedBtn').addEventListener('click', async () => {
+    const name = $('onboardingName').value.trim();
+    const restaurantName = $('onboardingRestaurantName').value.trim();
+    const foodPct = parseFloat($('onboardingFoodPct').value) || 0;
+    const barPct = parseFloat($('onboardingBarPct').value) || 0;
+    const tipPct = parseFloat($('onboardingTipPct').value) || 0;
+    if (!restaurantName) {
+      $('onboardingStatus').textContent = 'Restaurant name is required.';
+      return;
+    }
+    const btn = $('onboardingGetStartedBtn');
+    btn.disabled = true;
+    $('onboardingStatus').textContent = '';
+
+    const uid = currentUser.id;
+    const { data: restaurant, error } = await window.supabaseClient
+      .from('restaurants')
+      .insert({ user_id: uid, name: restaurantName, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct })
+      .select()
+      .single();
+    if (error || !restaurant) {
+      console.error('restaurant create failed', error);
+      $('onboardingStatus').textContent = 'Something went wrong. Please try again.';
+      btn.disabled = false;
+      return;
+    }
+
+    const { error: claimErr } = await window.supabaseClient
+      .from('shifts')
+      .update({ restaurant_id: restaurant.id })
+      .eq('user_id', uid)
+      .is('restaurant_id', null);
+    if (claimErr) console.error('claim orphaned shifts failed', claimErr);
+
+    restaurants = [restaurant];
+    activeRestaurantId = restaurant.id;
+    try { localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId); } catch (e) {}
+
+    settings = { ...settings, foodPct, barPct, tipPct, displayName: name };
+    await persistSettings();
+    $('foodPct').value = settings.foodPct;
+    $('barPct').value = settings.barPct;
+    $('tipPct').value = settings.tipPct;
+    $('menuDisplayName').value = settings.displayName;
+
+    btn.disabled = false;
+    hideOnboarding();
+    await loadEntries();
+  });
 
   // ---- Greeting ----
   function renderGreeting() {
@@ -1210,6 +1339,11 @@
     if (user) await migrateLocalDataIfNeeded(user.id);
     await loadSettings();
     await loadRestaurants();
+    if (isSignedIn() && restaurants.length === 0) {
+      showOnboarding();
+    } else {
+      hideOnboarding();
+    }
     await loadEntries();
     updateMenuAuthView();
   });
