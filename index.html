@@ -799,6 +799,16 @@
       userId: session ? session.user.id : null,
       msSinceAuthCheckStarted: (performance.now() - authCheckStartedAt).toFixed(1),
     });
+    // TEMP DEBUG: onAuthStateChange fires its own independent, unretried
+    // "INITIAL_SESSION" check on registration, racing our retried
+    // checkSessionWithRetry(). If it resolves later and still hits the same
+    // race our retry exists to work around, it can clobber the correct
+    // state our retry already established. Our retry is the sole authority
+    // for the initial state - only react here to genuine later transitions.
+    if (_event === 'INITIAL_SESSION') {
+      debugLog('onAuthStateChange: ignoring its own INITIAL_SESSION event (our retried getSession check is authoritative for initial load)'); // TEMP DEBUG
+      return;
+    }
     updateAuthUI(session);
     if (session) hideLoginOverlay();
   });
@@ -853,6 +863,7 @@
 <script>
 (function() {
   const $ = (id) => document.getElementById(id);
+  const debugLog = window.__tipoutDebugLog || function() {}; // TEMP DEBUG
   function hideAppLoading() {
     const el = $('app-loading');
     if (el) el.style.display = 'none';
@@ -1640,24 +1651,39 @@
     const prevId = currentUser ? currentUser.id : null;
     const nextId = user ? user.id : null;
     console.log('[tipout] auth-change received', { prevId, nextId, authInitialized });
+    debugLog('auth-change received: prevId=' + prevId + ' nextId=' + nextId + ' authInitialized=' + authInitialized); // TEMP DEBUG
     if (authInitialized && prevId === nextId) {
       console.log('[tipout] auth-change: ignored (already initialized with same user)');
+      debugLog('auth-change: ignored (already initialized with same user)'); // TEMP DEBUG
       return;
     }
     authInitialized = true;
     currentUser = user;
     hideAppLoading();
-    if (user) await migrateLocalDataIfNeeded(user.id);
+    debugLog('auth-change: proceeding, user=' + nextId); // TEMP DEBUG
+    if (user) {
+      debugLog('calling migrateLocalDataIfNeeded()...'); // TEMP DEBUG
+      await migrateLocalDataIfNeeded(user.id);
+      debugLog('migrateLocalDataIfNeeded() done'); // TEMP DEBUG
+    }
+    debugLog('calling loadRestaurants()...'); // TEMP DEBUG
     await loadRestaurants();
+    debugLog('restaurants loaded: ' + restaurants.length + ' activeRestaurantId=' + activeRestaurantId); // TEMP DEBUG
+    debugLog('calling loadSettings()...'); // TEMP DEBUG
     await loadSettings();
+    debugLog('settings loaded: foodPct=' + settings.foodPct + ' barPct=' + settings.barPct + ' tipPct=' + settings.tipPct); // TEMP DEBUG
     if (isSignedIn() && restaurants.length === 0) {
       showOnboarding();
     } else {
       hideOnboarding();
     }
     renderMastheadTitle();
+    debugLog('calling loadEntries()...'); // TEMP DEBUG
     await loadEntries();
+    debugLog('entries loaded: ' + entries.length); // TEMP DEBUG
+    debugLog('updating UI to signed-in state (updateMenuAuthView)...'); // TEMP DEBUG
     updateMenuAuthView();
+    debugLog('auth-change: init complete, signedIn=' + isSignedIn()); // TEMP DEBUG
     console.log('[tipout] auth-change: init complete', {
       signedIn: isSignedIn(),
       restaurantCount: restaurants.length,
