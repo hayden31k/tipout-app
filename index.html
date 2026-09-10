@@ -763,13 +763,6 @@
     if (r.take_home !== null && r.take_home !== undefined) e.takeHome = r.take_home;
     return e;
   }
-  function settingsToRow(s, uid) {
-    return { user_id: uid, food_pct: s.foodPct, bar_pct: s.barPct, tip_pct: s.tipPct, display_name: s.displayName || null };
-  }
-  function rowToSettings(r) {
-    return { foodPct: r.food_pct, barPct: r.bar_pct, tipPct: r.tip_pct, displayName: r.display_name || '' };
-  }
-
   function fmt(n) {
     const sign = n < 0 ? '-' : '';
     return sign + '$' + Math.abs(n).toFixed(2);
@@ -799,34 +792,56 @@
   $('tabStats').addEventListener('click', () => showPage('stats'));
 
   // ---- Settings ----
+  // Display name is account-level (user_settings.display_name when signed in, else the
+  // local settings blob). Tipout percentages come from the active restaurant's row when
+  // signed in with one; otherwise they fall back to the same local settings blob used for
+  // anonymous users. user_settings.food_pct/bar_pct/tip_pct are no longer read or written.
   async function loadSettings() {
+    let localBlob = null;
+    try {
+      const raw = localStorage.getItem('tipout-settings');
+      localBlob = raw ? JSON.parse(raw) : null;
+    } catch (e) { localBlob = null; }
+
+    let displayName = localBlob ? (localBlob.displayName || '') : '';
     if (isSignedIn()) {
       const { data, error } = await window.supabaseClient
         .from('user_settings').select('*').eq('user_id', currentUser.id).maybeSingle();
-      settings = (!error && data) ? rowToSettings(data) : { ...DEFAULT_SETTINGS };
       if (error) console.error('settings load failed', error);
-    } else {
-      try {
-        const raw = localStorage.getItem('tipout-settings');
-        settings = raw ? JSON.parse(raw) : { ...DEFAULT_SETTINGS };
-      } catch (e) { settings = { ...DEFAULT_SETTINGS }; }
+      displayName = (!error && data && data.display_name) ? data.display_name : '';
     }
+
+    const restaurant = isSignedIn() ? getActiveRestaurant() : null;
+    const foodPct = restaurant ? restaurant.food_pct : (localBlob ? localBlob.foodPct : DEFAULT_SETTINGS.foodPct);
+    const barPct = restaurant ? restaurant.bar_pct : (localBlob ? localBlob.barPct : DEFAULT_SETTINGS.barPct);
+    const tipPct = restaurant ? restaurant.tip_pct : (localBlob ? localBlob.tipPct : DEFAULT_SETTINGS.tipPct);
+
+    settings = { foodPct, barPct, tipPct, displayName };
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
     $('menuDisplayName').value = settings.displayName || '';
     renderGreeting();
   }
-  async function persistSettings() {
+  async function persistDisplayName() {
     if (isSignedIn()) {
       const { error } = await window.supabaseClient
-        .from('user_settings').upsert(settingsToRow(settings, currentUser.id));
-      if (error) console.error('settings save failed', error);
+        .from('user_settings').upsert({ user_id: currentUser.id, display_name: settings.displayName || null });
+      if (error) console.error('display name save failed', error);
     } else {
       try { localStorage.setItem('tipout-settings', JSON.stringify(settings)); }
       catch (e) { console.error('settings save failed', e); }
     }
     renderGreeting();
+  }
+  async function persistPercentages() {
+    const restaurant = isSignedIn() ? getActiveRestaurant() : null;
+    if (restaurant) {
+      await updateActiveRestaurant({ food_pct: settings.foodPct, bar_pct: settings.barPct, tip_pct: settings.tipPct });
+    } else {
+      try { localStorage.setItem('tipout-settings', JSON.stringify(settings)); }
+      catch (e) { console.error('settings save failed', e); }
+    }
   }
   async function saveSettings() {
     settings = {
@@ -835,7 +850,8 @@
       tipPct: parseFloat($('tipPct').value) || 0,
       displayName: $('menuDisplayName').value.trim(),
     };
-    await persistSettings();
+    await persistPercentages();
+    await persistDisplayName();
   }
 
   // ---- Restaurants ----
@@ -845,6 +861,15 @@
   function renderMastheadTitle() {
     const r = isSignedIn() ? getActiveRestaurant() : null;
     $('mastheadTitle').textContent = r ? `Daily ${r.name} Tipout` : 'Daily Tipout';
+  }
+  async function updateActiveRestaurant(patch) {
+    const restaurant = getActiveRestaurant();
+    if (!restaurant) return null;
+    const { data, error } = await window.supabaseClient
+      .from('restaurants').update(patch).eq('id', restaurant.id).select().single();
+    if (error || !data) { console.error('restaurant update failed', error); return null; }
+    restaurants = restaurants.map(x => x.id === data.id ? data : x);
+    return data;
   }
   async function fetchRestaurants(uid) {
     const { data, error } = await window.supabaseClient
@@ -902,19 +927,16 @@
     const btn = $('restaurantPanelSaveBtn');
     btn.disabled = true;
     $('restaurantPanelStatus').textContent = '';
-    const { data, error } = await window.supabaseClient
-      .from('restaurants')
-      .update({ name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct })
-      .eq('id', r.id)
-      .select()
-      .single();
+    const data = await updateActiveRestaurant({ name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct });
     btn.disabled = false;
-    if (error || !data) {
-      console.error('restaurant update failed', error);
+    if (!data) {
       $('restaurantPanelStatus').textContent = 'Something went wrong. Please try again.';
       return;
     }
-    restaurants = restaurants.map(x => x.id === data.id ? data : x);
+    settings = { ...settings, foodPct: data.food_pct, barPct: data.bar_pct, tipPct: data.tip_pct };
+    $('foodPct').value = settings.foodPct;
+    $('barPct').value = settings.barPct;
+    $('tipPct').value = settings.tipPct;
     renderMastheadTitle();
     closeRestaurantPanel();
   });
@@ -974,7 +996,7 @@
     try { localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId); } catch (e) {}
 
     settings = { ...settings, foodPct, barPct, tipPct, displayName: name };
-    await persistSettings();
+    await persistDisplayName();
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
@@ -1454,8 +1476,8 @@
       if (error) { console.error('migration: shifts insert failed', error); return; }
     }
 
-    if (localSettings) {
-      const row = settingsToRow(localSettings, uid);
+    if (localSettings && localSettings.displayName) {
+      const row = { user_id: uid, display_name: localSettings.displayName };
       const { data, error } = await window.supabaseClient.from('user_settings').upsert(row).select();
       console.log('[tipout] migrate: settings upsert result', { row, data, error });
       if (error) { console.error('migration: settings upsert failed', error); return; }
@@ -1476,8 +1498,8 @@
     authInitialized = true;
     currentUser = user;
     if (user) await migrateLocalDataIfNeeded(user.id);
-    await loadSettings();
     await loadRestaurants();
+    await loadSettings();
     if (isSignedIn() && restaurants.length === 0) {
       showOnboarding();
     } else {
