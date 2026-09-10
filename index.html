@@ -400,11 +400,19 @@
     font-family: monospace; font-size: 10px; line-height: 1.4;
     padding: 6px 8px; white-space: pre-wrap; word-break: break-all;
   }
+  /* Pinned separately (not inside the scrolling panel) so it's never
+     scrolled out of view no matter how much debug output accumulates. */
+  #debugBuildBadge {
+    position: fixed; top: 0; left: 0; z-index: 10000;
+    background: #f0f; color: #000; font-family: monospace; font-weight: bold;
+    font-size: 11px; padding: 3px 6px;
+  }
   /* ===== END TEMP DEBUG ===== */
 </style>
 </head>
 <body>
 <!-- ===== TEMP DEBUG (remove once signed-out-on-reload bug is fixed) ===== -->
+<div id="debugBuildBadge"></div>
 <div id="debugPanel"></div>
 <!-- ===== END TEMP DEBUG ===== -->
 <div id="app-loading"><span>Loading&hellip;</span></div>
@@ -624,7 +632,10 @@
 <script>
 (function() {
   // ===== TEMP DEBUG (remove once signed-out-on-reload bug is fixed) =====
-  const DEBUG_BUILD = 'debug-2026-09-10-a';
+  // Bump this string on every commit that touches this debug system, so a
+  // glance at the pinned on-screen badge proves whether the phone is
+  // actually running this code or a stale cached copy.
+  const DEBUG_BUILD = 'debug-2026-09-10-b';
   function debugLog(line) {
     console.log('[tipout][debug]', line);
     const el = document.getElementById('debugPanel');
@@ -633,6 +644,17 @@
     el.textContent += `[${stamp}] ${line}\n`;
     el.scrollTop = el.scrollHeight;
   }
+  const badgeEl = document.getElementById('debugBuildBadge');
+  if (badgeEl) badgeEl.textContent = DEBUG_BUILD;
+  // Any silent exception anywhere in the app would otherwise be invisible
+  // on a phone with no console - surface everything to the on-screen panel.
+  window.addEventListener('error', (e) => {
+    debugLog('WINDOW ERROR: ' + (e.error ? (e.error.name + ': ' + e.error.message) : e.message) + ' @ ' + e.filename + ':' + e.lineno);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const reason = e.reason;
+    debugLog('UNHANDLED REJECTION: ' + (reason && reason.message ? reason.message : String(reason)));
+  });
   debugLog('build: ' + DEBUG_BUILD);
   debugLog('visibilityState=' + document.visibilityState
     + ' standalone=' + (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
@@ -727,8 +749,11 @@
   }
 
   function updateAuthUI(session) {
+    debugLog('updateAuthUI() called with user=' + (session ? session.user.id : null)); // TEMP DEBUG
     currentSession = session;
+    debugLog('updateAuthUI(): dispatching tipout-auth-change event...'); // TEMP DEBUG
     window.dispatchEvent(new CustomEvent('tipout-auth-change', { detail: { user: session ? session.user : null } }));
+    debugLog('updateAuthUI(): tipout-auth-change event dispatch returned (listener ran synchronously if any handler ran to completion without an internal await)'); // TEMP DEBUG
   }
 
   // Safety net: if the session check hangs (e.g. offline mid-shift, Supabase
@@ -789,7 +814,16 @@
       hasSession: !!session,
       userId: session ? session.user.id : null,
     });
-    updateAuthUI(session);
+    debugLog('about to call updateAuthUI()...'); // TEMP DEBUG
+    try {
+      updateAuthUI(session);
+      debugLog('updateAuthUI() call returned normally'); // TEMP DEBUG
+    } catch (err) {
+      debugLog('updateAuthUI() THREW: ' + err.name + ': ' + err.message); // TEMP DEBUG
+      throw err;
+    }
+  }).catch((err) => {
+    debugLog('checkSessionWithRetry chain REJECTED: ' + (err && err.message)); // TEMP DEBUG
   });
 
   supabaseClient.auth.onAuthStateChange((_event, session) => {
@@ -1647,6 +1681,8 @@
 
   let authInitialized = false;
   window.addEventListener('tipout-auth-change', async (ev) => {
+    debugLog('tipout-auth-change LISTENER INVOKED'); // TEMP DEBUG
+    try {
     const user = ev.detail.user;
     const prevId = currentUser ? currentUser.id : null;
     const nextId = user ? user.id : null;
@@ -1690,6 +1726,10 @@
       activeRestaurantId,
       entryCount: entries.length,
     });
+    } catch (err) { // TEMP DEBUG
+      debugLog('auth-change LISTENER THREW: ' + err.name + ': ' + err.message); // TEMP DEBUG
+      console.error('[tipout] auth-change listener threw', err); // TEMP DEBUG
+    } // TEMP DEBUG
   });
 
   if ('serviceWorker' in navigator) {
