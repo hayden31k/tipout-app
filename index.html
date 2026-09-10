@@ -206,6 +206,13 @@
     padding: 3px 8px; cursor: pointer;
   }
 
+  .migration-toast {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 1100;
+    max-width: calc(100% - 32px); background: var(--brass); color: #2B241A;
+    font-family: 'Space Mono', monospace; font-size: 12px; text-align: center;
+    padding: 9px 16px; border-radius: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  }
+
   /* Login overlay */
   #login-screen {
     --bg: #16211B; --bg-2: #1D2C22; --paper: #F0EAD6; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E;
@@ -266,6 +273,7 @@
   </div>
 </div>
 <div id="tipout-root">
+  <div id="migrationToast" class="migration-toast" style="display:none;"></div>
   <div class="ticket-wrap">
     <div class="masthead">
       <h1>Daily Tipout</h1>
@@ -996,6 +1004,58 @@
     `;
   }
 
+  // ---- One-time localStorage -> Supabase migration ----
+  function showToast(message, duration) {
+    const el = $('migrationToast');
+    clearTimeout(showToast._timer);
+    el.textContent = message;
+    el.style.display = 'block';
+    showToast._timer = setTimeout(() => { el.style.display = 'none'; }, duration || 4000);
+  }
+
+  async function migrateLocalDataIfNeeded(uid) {
+    if (localStorage.getItem('tipout-migrated') === 'true') return;
+
+    let localEntries = [];
+    try {
+      const raw = localStorage.getItem('tipout-entries');
+      localEntries = raw ? JSON.parse(raw) : [];
+    } catch (e) { localEntries = []; }
+
+    let localSettings = null;
+    try {
+      const raw = localStorage.getItem('tipout-settings');
+      localSettings = raw ? JSON.parse(raw) : null;
+    } catch (e) { localSettings = null; }
+
+    console.log('[tipout] migrate: found in localStorage', { entryCount: localEntries.length, localEntries, localSettings });
+
+    if (!localEntries.length && !localSettings) {
+      localStorage.setItem('tipout-migrated', 'true');
+      console.log('[tipout] migrate: nothing to migrate, marking done');
+      return;
+    }
+
+    if (localEntries.length) {
+      const rows = localEntries.map(e => entryToRow(e, uid));
+      const { data, error } = await window.supabaseClient.from('shifts').insert(rows).select();
+      console.log('[tipout] migrate: shifts insert result', { rows, data, error });
+      if (error) { console.error('migration: shifts insert failed', error); return; }
+    }
+
+    if (localSettings) {
+      const row = settingsToRow(localSettings, uid);
+      const { data, error } = await window.supabaseClient.from('user_settings').upsert(row).select();
+      console.log('[tipout] migrate: settings upsert result', { row, data, error });
+      if (error) { console.error('migration: settings upsert failed', error); return; }
+    }
+
+    localStorage.setItem('tipout-migrated', 'true');
+    if (localEntries.length) {
+      showToast(`Synced ${localEntries.length} shift${localEntries.length === 1 ? '' : 's'} to your account`);
+    }
+  }
+
   let authInitialized = false;
   window.addEventListener('tipout-auth-change', async (ev) => {
     const user = ev.detail.user;
@@ -1004,6 +1064,7 @@
     if (authInitialized && prevId === nextId) return;
     authInitialized = true;
     currentUser = user;
+    if (user) await migrateLocalDataIfNeeded(user.id);
     await loadSettings();
     await loadEntries();
   });
