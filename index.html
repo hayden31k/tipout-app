@@ -42,6 +42,13 @@
   }
 
   #tipout-root * { box-sizing: border-box; }
+
+  #app-loading {
+    position: fixed; inset: 0; z-index: 1300;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg); color: var(--paper);
+    font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+  }
   .mono { font-family: 'Space Mono', monospace; }
   .ticket-wrap { max-width: 420px; margin: 0 auto; }
 
@@ -389,6 +396,7 @@
 </style>
 </head>
 <body>
+<div id="app-loading"><span>Loading&hellip;</span></div>
 <div id="login-screen" style="display:none;">
   <div class="login-card">
     <button class="login-dismiss" id="loginDismissBtn" aria-label="Close">&times;</button>
@@ -656,14 +664,39 @@
     window.dispatchEvent(new CustomEvent('tipout-auth-change', { detail: { user: session ? session.user : null } }));
   }
 
+  // Safety net: if the session check hangs (e.g. offline mid-shift, Supabase
+  // unreachable), don't block the app forever behind the loading screen -
+  // reveal it in whatever state we have, and let a later auth event (if any
+  // still arrives) correct it live.
+  setTimeout(() => {
+    console.warn('[tipout] auth: session check did not resolve within 4s, revealing app anyway');
+    if (typeof window.hideAppLoading === 'function') window.hideAppLoading();
+  }, 4000);
+
+  const authCheckStartedAt = performance.now();
+  console.log('[tipout] auth: getSession() called');
   supabaseClient.auth.getSession()
-    .then(({ data }) => updateAuthUI(data.session))
+    .then(({ data }) => {
+      const ms = (performance.now() - authCheckStartedAt).toFixed(1);
+      console.log('[tipout] auth: getSession() resolved after', ms, 'ms', {
+        hasSession: !!data.session,
+        userId: data.session ? data.session.user.id : null,
+      });
+      updateAuthUI(data.session);
+    })
     .catch((err) => {
-      console.error('getSession failed, falling back to signed-out state', err);
+      const ms = (performance.now() - authCheckStartedAt).toFixed(1);
+      console.error('[tipout] auth: getSession() rejected after', ms, 'ms, falling back to signed-out state', err);
       updateAuthUI(null);
     });
 
   supabaseClient.auth.onAuthStateChange((_event, session) => {
+    console.log('[tipout] auth: onAuthStateChange fired', {
+      event: _event,
+      hasSession: !!session,
+      userId: session ? session.user.id : null,
+      msSinceAuthCheckStarted: (performance.now() - authCheckStartedAt).toFixed(1),
+    });
     updateAuthUI(session);
     if (session) hideLoginOverlay();
   });
@@ -718,6 +751,11 @@
 <script>
 (function() {
   const $ = (id) => document.getElementById(id);
+  function hideAppLoading() {
+    const el = $('app-loading');
+    if (el) el.style.display = 'none';
+  }
+  window.hideAppLoading = hideAppLoading;
   const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, displayName: '' };
   const ACTIVE_RESTAURANT_KEY = 'tipout-active-restaurant-id';
@@ -1499,9 +1537,14 @@
     const user = ev.detail.user;
     const prevId = currentUser ? currentUser.id : null;
     const nextId = user ? user.id : null;
-    if (authInitialized && prevId === nextId) return;
+    console.log('[tipout] auth-change received', { prevId, nextId, authInitialized });
+    if (authInitialized && prevId === nextId) {
+      console.log('[tipout] auth-change: ignored (already initialized with same user)');
+      return;
+    }
     authInitialized = true;
     currentUser = user;
+    hideAppLoading();
     if (user) await migrateLocalDataIfNeeded(user.id);
     await loadRestaurants();
     await loadSettings();
@@ -1513,6 +1556,12 @@
     renderMastheadTitle();
     await loadEntries();
     updateMenuAuthView();
+    console.log('[tipout] auth-change: init complete', {
+      signedIn: isSignedIn(),
+      restaurantCount: restaurants.length,
+      activeRestaurantId,
+      entryCount: entries.length,
+    });
   });
 
   if ('serviceWorker' in navigator) {
