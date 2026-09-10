@@ -36,8 +36,16 @@ self.addEventListener('fetch', (event) => {
     // Network-first: always serve the latest index.html when online, so app
     // updates show up without needing a CACHE_NAME bump. Only fall back to
     // the cached copy (e.g. mid-shift with no connection) if the fetch fails.
+    //
+    // cache: 'no-store' is required here - GitHub Pages serves index.html
+    // with "Cache-Control: max-age=600", and a plain fetch() honors that,
+    // meaning the browser's own HTTP cache (separate from, and underneath,
+    // this service worker's Cache Storage) could silently return a stale
+    // response for up to 10 minutes with zero network request at all,
+    // completely defeating "network-first" regardless of this handler's
+    // own logic.
     event.respondWith(
-      fetch(request).then((response) => {
+      fetch(request, { cache: 'no-store' }).then((response) => {
         if (response.status === 200) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
