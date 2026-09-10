@@ -616,9 +616,19 @@
   // ---- Entries ----
   async function loadEntries() {
     if (isSignedIn()) {
-      const { data, error } = await window.supabaseClient
-        .from('shifts').select('*').eq('user_id', currentUser.id).order('ts', { ascending: false });
-      console.log('[tipout] shifts load for user', currentUser.id, { data, error });
+      const uid = currentUser.id;
+      console.log('[tipout] loadEntries: querying shifts where user_id =', uid);
+      const { data, error, status, statusText } = await window.supabaseClient
+        .from('shifts').select('*').eq('user_id', uid).order('ts', { ascending: false });
+      console.log('[tipout] loadEntries: query result', {
+        uidAtQueryTime: uid,
+        currentUserIdNow: currentUser ? currentUser.id : null,
+        status,
+        statusText,
+        rowCount: data ? data.length : null,
+        data,
+        error,
+      });
       entries = (!error && data) ? data.map(rowToEntry) : [];
       if (error) console.error('shifts load failed', error);
     } else {
