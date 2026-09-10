@@ -16,7 +16,7 @@
 
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Archivo:wght@500;600;700&display=swap');
 
-  #tipout-root {
+  :root {
     --bg: #16211B;
     --bg-2: #1D2C22;
     --paper: #F0EAD6;
@@ -27,7 +27,9 @@
     --get: #7A6A2E;
     --brass: #B08D57;
     --rule: #C9BE9E;
+  }
 
+  #tipout-root {
     font-family: 'Archivo', sans-serif;
     color: var(--ink);
     background: var(--bg);
@@ -219,6 +221,7 @@
 
   .menu-drawer {
     position: fixed; top: 0; left: 0; bottom: 0; width: 260px; max-width: 82%;
+    background-color: #F0EAD6;
     background: var(--paper); color: var(--ink); z-index: 1160; padding: 20px 18px;
     box-sizing: border-box; transform: translateX(-100%); transition: transform 0.25s ease;
     box-shadow: 8px 0 24px rgba(0,0,0,0.3); overflow-y: auto;
