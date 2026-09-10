@@ -243,10 +243,13 @@
     background: transparent; font-family: 'Archivo', sans-serif; font-size: 14px; color: var(--ink);
   }
   .menu-field input[type=text]:focus { outline: none; border-color: var(--brass); }
-  .menu-status-line {
+  .menu-status-row {
+    display: flex; justify-content: space-between; align-items: baseline;
     font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.04em;
-    text-transform: uppercase; color: var(--brass); font-weight: 700; margin: 14px 0 8px;
+    margin: 14px 0 8px;
   }
+  .menu-status-row .menu-status-label { text-transform: uppercase; color: var(--ink-soft); }
+  .menu-status-row .menu-status-value { text-transform: uppercase; color: var(--brass); font-weight: 700; }
   .menu-item {
     display: block; width: 100%; text-align: left; padding: 10px 4px; margin: 2px 0;
     background: none; border: none; border-top: 1px solid var(--rule); font-family: 'Archivo', sans-serif;
@@ -338,6 +341,51 @@
   }
   #onboarding-screen button:disabled { opacity: 0.6; cursor: default; }
   #onboarding-screen .onboarding-status { margin-top: 12px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--owe); min-height: 16px; text-align: center; }
+
+  /* Restaurant panel */
+  #restaurant-panel {
+    --bg: #16211B; --bg-2: #1D2C22; --paper: #F0EAD6; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E; --owe: #B33A3A;
+    font-family: 'Archivo', sans-serif;
+    color: var(--ink);
+    position: fixed; inset: 0; z-index: 1200;
+    background: rgba(22, 33, 27, 0.92);
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  #restaurant-panel * { box-sizing: border-box; }
+  #restaurant-panel .panel-card {
+    position: relative; background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 360px; width: 100%;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+  }
+  #restaurant-panel .panel-close {
+    position: absolute; top: 8px; right: 10px; background: none; border: none;
+    color: var(--ink-soft); font-size: 20px; line-height: 1; cursor: pointer;
+  }
+  #restaurant-panel h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 18px; margin: 0 0 18px; text-align: center; }
+  #restaurant-panel label {
+    display: block; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 14px 0 4px;
+  }
+  #restaurant-panel input[type=text], #restaurant-panel input[type=number] {
+    width: 100%; padding: 9px 10px; border: 1.5px solid var(--rule); border-radius: 3px;
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink);
+  }
+  #restaurant-panel input:focus { outline: none; border-color: var(--ink); }
+  #restaurant-panel .panel-pct-row { display: flex; gap: 8px; }
+  #restaurant-panel .panel-pct-row > div { flex: 1; }
+  #restaurant-panel .panel-save {
+    width: 100%; margin-top: 20px; padding: 12px; background: var(--ink); color: var(--paper); border: none; border-radius: 3px;
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+  #restaurant-panel .panel-save:disabled { opacity: 0.6; cursor: default; }
+  #restaurant-panel .panel-status { margin-top: 12px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--owe); min-height: 16px; text-align: center; }
+  #restaurant-panel .panel-sep { border: none; border-top: 1px solid var(--rule); margin: 20px 0 4px; }
+  #restaurant-panel .panel-add-another {
+    display: block; width: 100%; text-align: left; padding: 10px 4px; margin: 2px 0;
+    background: none; border: none; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 13.5px; color: var(--ink); cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -384,6 +432,32 @@
     <div class="onboarding-status" id="onboardingStatus"></div>
   </div>
 </div>
+<div id="restaurant-panel" style="display:none;">
+  <div class="panel-card">
+    <button class="panel-close" id="restaurantPanelCloseBtn" aria-label="Close">&times;</button>
+    <h1>Current restaurant</h1>
+    <label for="restaurantPanelName">Restaurant name</label>
+    <input type="text" id="restaurantPanelName" />
+    <div class="panel-pct-row">
+      <div>
+        <label for="restaurantPanelFoodPct">Food %</label>
+        <input type="number" id="restaurantPanelFoodPct" step="0.1" inputmode="decimal" />
+      </div>
+      <div>
+        <label for="restaurantPanelBarPct">Bar %</label>
+        <input type="number" id="restaurantPanelBarPct" step="0.1" inputmode="decimal" />
+      </div>
+      <div>
+        <label for="restaurantPanelTipPct">Tip %</label>
+        <input type="number" id="restaurantPanelTipPct" step="0.1" inputmode="decimal" />
+      </div>
+    </div>
+    <button class="panel-save" id="restaurantPanelSaveBtn">Save changes</button>
+    <div class="panel-status" id="restaurantPanelStatus"></div>
+    <hr class="panel-sep" />
+    <button class="panel-add-another" id="restaurantPanelAddAnother">Add another restaurant</button>
+  </div>
+</div>
 <div class="menu-overlay" id="menuOverlay"></div>
 <div class="menu-drawer" id="menuDrawer">
   <button class="menu-close" id="menuCloseBtn" aria-label="Close">&times;</button>
@@ -396,7 +470,11 @@
       <label>Display name</label>
       <input type="text" id="menuDisplayName" placeholder="Add a name" />
     </div>
-    <div class="menu-status-line">Free</div>
+    <div class="menu-status-row">
+      <span class="menu-status-label">Member status</span>
+      <span class="menu-status-value" id="menuStatusValue">Free</span>
+    </div>
+    <button class="menu-item" id="menuCurrentRestaurant">Current restaurant</button>
     <button class="menu-item" id="menuGetPro">Get Pro</button>
     <button class="menu-item danger" id="menuSignOut">Sign out</button>
   </div>
@@ -413,7 +491,7 @@
     </div>
     <div class="greeting-line" id="greetingLine"></div>
     <div class="masthead">
-      <h1>Daily Tipout</h1>
+      <h1 id="mastheadTitle">Daily Tipout</h1>
     </div>
 
     <div class="tabs">
@@ -761,6 +839,13 @@
   }
 
   // ---- Restaurants ----
+  function getActiveRestaurant() {
+    return restaurants.find(r => r.id === activeRestaurantId) || null;
+  }
+  function renderMastheadTitle() {
+    const r = isSignedIn() ? getActiveRestaurant() : null;
+    $('mastheadTitle').textContent = r ? `Daily ${r.name} Tipout` : 'Daily Tipout';
+  }
   async function fetchRestaurants(uid) {
     const { data, error } = await window.supabaseClient
       .from('restaurants').select('*').eq('user_id', uid).order('name', { ascending: true });
@@ -783,6 +868,59 @@
       else localStorage.removeItem(ACTIVE_RESTAURANT_KEY);
     } catch (e) {}
   }
+
+  // ---- Restaurant panel ----
+  function openRestaurantPanel() {
+    const r = getActiveRestaurant();
+    if (!r) return;
+    $('restaurantPanelName').value = r.name;
+    $('restaurantPanelFoodPct').value = r.food_pct;
+    $('restaurantPanelBarPct').value = r.bar_pct;
+    $('restaurantPanelTipPct').value = r.tip_pct;
+    $('restaurantPanelStatus').textContent = '';
+    $('restaurant-panel').style.display = 'flex';
+  }
+  function closeRestaurantPanel() {
+    $('restaurant-panel').style.display = 'none';
+  }
+  $('menuCurrentRestaurant').addEventListener('click', () => {
+    closeMenu();
+    openRestaurantPanel();
+  });
+  $('restaurantPanelCloseBtn').addEventListener('click', closeRestaurantPanel);
+  $('restaurantPanelSaveBtn').addEventListener('click', async () => {
+    const r = getActiveRestaurant();
+    if (!r) return;
+    const name = $('restaurantPanelName').value.trim();
+    const foodPct = parseFloat($('restaurantPanelFoodPct').value) || 0;
+    const barPct = parseFloat($('restaurantPanelBarPct').value) || 0;
+    const tipPct = parseFloat($('restaurantPanelTipPct').value) || 0;
+    if (!name) {
+      $('restaurantPanelStatus').textContent = 'Restaurant name is required.';
+      return;
+    }
+    const btn = $('restaurantPanelSaveBtn');
+    btn.disabled = true;
+    $('restaurantPanelStatus').textContent = '';
+    const { data, error } = await window.supabaseClient
+      .from('restaurants')
+      .update({ name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct })
+      .eq('id', r.id)
+      .select()
+      .single();
+    btn.disabled = false;
+    if (error || !data) {
+      console.error('restaurant update failed', error);
+      $('restaurantPanelStatus').textContent = 'Something went wrong. Please try again.';
+      return;
+    }
+    restaurants = restaurants.map(x => x.id === data.id ? data : x);
+    renderMastheadTitle();
+    closeRestaurantPanel();
+  });
+  $('restaurantPanelAddAnother').addEventListener('click', () => {
+    alert('Adding multiple restaurants is a Pro feature — upgrade to Pro to add more');
+  });
 
   // ---- Onboarding (first restaurant) ----
   function showOnboarding() {
@@ -844,6 +982,7 @@
 
     btn.disabled = false;
     hideOnboarding();
+    renderMastheadTitle();
     await loadEntries();
   });
 
@@ -1344,6 +1483,7 @@
     } else {
       hideOnboarding();
     }
+    renderMastheadTitle();
     await loadEntries();
     updateMenuAuthView();
   });
