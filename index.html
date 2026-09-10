@@ -807,24 +807,39 @@
     return null;
   }
 
-  checkSessionWithRetry(4, [250, 500, 750]).then((session) => {
-    const ms = (performance.now() - authCheckStartedAt).toFixed(1);
-    debugLog('FINAL RESULT after ' + ms + 'ms: ' + (session ? ('signed in as ' + session.user.id) : 'signed out')); // TEMP DEBUG
-    console.log('[tipout] auth: initial session check settled after', ms, 'ms', {
-      hasSession: !!session,
-      userId: session ? session.user.id : null,
+  // TEMP DEBUG FINDING, now fixed for real: dispatching tipout-auth-change
+  // reportedly happened, but the script-2 listener never ran. Root cause:
+  // browsers flush any pending microtasks after each classic <script> tag
+  // finishes executing, BEFORE moving on to parse/execute the next one. If
+  // getSession() resolves via a pure microtask chain (no real network
+  // wait needed - e.g. a non-expired session found on the very first
+  // attempt), the entire checkSessionWithRetry->updateAuthUI->dispatch
+  // chain can complete inside that same microtask checkpoint, which runs
+  // BEFORE script 2 (which registers the listener) has even been parsed.
+  // Deferring the kickoff past a real macrotask boundary (setTimeout)
+  // guarantees script 2 has fully executed and registered its listener
+  // first, regardless of how fast getSession() resolves afterward.
+  setTimeout(() => {
+    debugLog('kicking off checkSessionWithRetry (deferred past current script execution via setTimeout)'); // TEMP DEBUG
+    checkSessionWithRetry(4, [250, 500, 750]).then((session) => {
+      const ms = (performance.now() - authCheckStartedAt).toFixed(1);
+      debugLog('FINAL RESULT after ' + ms + 'ms: ' + (session ? ('signed in as ' + session.user.id) : 'signed out')); // TEMP DEBUG
+      console.log('[tipout] auth: initial session check settled after', ms, 'ms', {
+        hasSession: !!session,
+        userId: session ? session.user.id : null,
+      });
+      debugLog('about to call updateAuthUI()...'); // TEMP DEBUG
+      try {
+        updateAuthUI(session);
+        debugLog('updateAuthUI() call returned normally'); // TEMP DEBUG
+      } catch (err) {
+        debugLog('updateAuthUI() THREW: ' + err.name + ': ' + err.message); // TEMP DEBUG
+        throw err;
+      }
+    }).catch((err) => {
+      debugLog('checkSessionWithRetry chain REJECTED: ' + (err && err.message)); // TEMP DEBUG
     });
-    debugLog('about to call updateAuthUI()...'); // TEMP DEBUG
-    try {
-      updateAuthUI(session);
-      debugLog('updateAuthUI() call returned normally'); // TEMP DEBUG
-    } catch (err) {
-      debugLog('updateAuthUI() THREW: ' + err.name + ': ' + err.message); // TEMP DEBUG
-      throw err;
-    }
-  }).catch((err) => {
-    debugLog('checkSessionWithRetry chain REJECTED: ' + (err && err.message)); // TEMP DEBUG
-  });
+  }, 0);
 
   supabaseClient.auth.onAuthStateChange((_event, session) => {
     console.log('[tipout] auth: onAuthStateChange fired', {
@@ -1680,6 +1695,7 @@
   }
 
   let authInitialized = false;
+  debugLog('tipout-auth-change listener registered at ' + performance.now().toFixed(1) + 'ms'); // TEMP DEBUG
   window.addEventListener('tipout-auth-change', async (ev) => {
     debugLog('tipout-auth-change LISTENER INVOKED'); // TEMP DEBUG
     try {
