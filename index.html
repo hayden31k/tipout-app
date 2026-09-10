@@ -393,9 +393,20 @@
     display: block; width: 100%; text-align: left; padding: 10px 4px; margin: 2px 0;
     background: none; border: none; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 13.5px; color: var(--ink); cursor: pointer;
   }
+  /* ===== TEMP DEBUG (remove once signed-out-on-reload bug is fixed) ===== */
+  #debugPanel {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 9999;
+    max-height: 45vh; overflow-y: auto; background: #000; color: #0f0;
+    font-family: monospace; font-size: 10px; line-height: 1.4;
+    padding: 6px 8px; white-space: pre-wrap; word-break: break-all;
+  }
+  /* ===== END TEMP DEBUG ===== */
 </style>
 </head>
 <body>
+<!-- ===== TEMP DEBUG (remove once signed-out-on-reload bug is fixed) ===== -->
+<div id="debugPanel"></div>
+<!-- ===== END TEMP DEBUG ===== -->
 <div id="app-loading"><span>Loading&hellip;</span></div>
 <div id="login-screen" style="display:none;">
   <div class="login-card">
@@ -612,6 +623,62 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function() {
+  // ===== TEMP DEBUG (remove once signed-out-on-reload bug is fixed) =====
+  const DEBUG_BUILD = 'debug-2026-09-10-a';
+  function debugLog(line) {
+    console.log('[tipout][debug]', line);
+    const el = document.getElementById('debugPanel');
+    if (!el) return;
+    const stamp = (performance.now() / 1000).toFixed(2) + 's';
+    el.textContent += `[${stamp}] ${line}\n`;
+    el.scrollTop = el.scrollHeight;
+  }
+  debugLog('build: ' + DEBUG_BUILD);
+  debugLog('visibilityState=' + document.visibilityState
+    + ' standalone=' + (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    + ' onLine=' + navigator.onLine);
+  // This mirrors supabase-js's own internal writability probe: if this
+  // fails, the library silently falls back to an in-memory-only store
+  // (a fresh, empty object on every reload) instead of localStorage -
+  // which would explain 100% reproducible signed-out-on-reload with zero
+  // relation to timing, while backgrounding still works (same JS process,
+  // same in-memory object, never lost).
+  try {
+    const probeKey = 'tipout-storage-probe-' + Math.random();
+    localStorage.setItem(probeKey, 'x');
+    const readBack = localStorage.getItem(probeKey);
+    localStorage.removeItem(probeKey);
+    debugLog('localStorage read/write probe: ' + (readBack === 'x' ? 'PASSED (persistent storage works)' : 'FAILED (read back "' + readBack + '")'));
+  } catch (e) {
+    debugLog('localStorage read/write probe: THREW - ' + e.name + ': ' + e.message + ' <-- likely cause: storage blocked, forcing memory-only sessions');
+  }
+  try {
+    const sbKeys = Object.keys(localStorage).filter((k) => k.startsWith('sb-'));
+    if (!sbKeys.length) {
+      debugLog('localStorage: NO sb-* keys found at load');
+    } else {
+      sbKeys.forEach((k) => {
+        const raw = localStorage.getItem(k);
+        let summary = 'unparseable (len ' + (raw ? raw.length : 0) + ')';
+        try {
+          const parsed = JSON.parse(raw);
+          const expiresAt = parsed.expires_at;
+          const isExpired = expiresAt ? (expiresAt * 1000 < Date.now()) : 'unknown';
+          summary = 'hasAccessToken=' + !!parsed.access_token
+            + ' hasRefreshToken=' + !!parsed.refresh_token
+            + ' expires_at=' + expiresAt
+            + ' expired=' + isExpired
+            + ' userId=' + (parsed.user ? parsed.user.id : null);
+        } catch (e) {}
+        debugLog('localStorage[' + k + ']: ' + summary);
+      });
+    }
+  } catch (e) {
+    debugLog('localStorage read failed: ' + e.message);
+  }
+  window.__tipoutDebugLog = debugLog;
+  // ===== END TEMP DEBUG =====
+
   const SUPABASE_URL = 'https://eltscodojowvehqsrkau.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_F8zIeYxKkTQnhoOlXPqg_A_qGDzg8Zz';
   const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -688,13 +755,16 @@
   const authCheckStartedAt = performance.now();
   async function checkSessionWithRetry(maxAttempts, delaysMs) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      debugLog('attempt ' + attempt + ': calling getSession()...'); // TEMP DEBUG
       console.log('[tipout] auth: getSession() attempt', attempt, 'called');
       try {
         const { data, error } = await supabaseClient.auth.getSession();
         const ms = (performance.now() - authCheckStartedAt).toFixed(1);
         if (error) {
+          debugLog('attempt ' + attempt + ': ERROR after ' + ms + 'ms - ' + error.message); // TEMP DEBUG
           console.error('[tipout] auth: getSession() attempt', attempt, 'errored after', ms, 'ms', error);
         } else {
+          debugLog('attempt ' + attempt + ': ' + (data.session ? ('FOUND session for user ' + data.session.user.id) : 'empty') + ' after ' + ms + 'ms'); // TEMP DEBUG
           console.log('[tipout] auth: getSession() attempt', attempt, 'resolved after', ms, 'ms', {
             hasSession: !!data.session,
             userId: data.session ? data.session.user.id : null,
@@ -703,15 +773,18 @@
         }
       } catch (err) {
         const ms = (performance.now() - authCheckStartedAt).toFixed(1);
+        debugLog('attempt ' + attempt + ': THREW after ' + ms + 'ms - ' + err.message); // TEMP DEBUG
         console.error('[tipout] auth: getSession() attempt', attempt, 'threw after', ms, 'ms', err);
       }
       if (attempt < maxAttempts) await sleep(delaysMs[attempt - 1] || delaysMs[delaysMs.length - 1]);
     }
+    debugLog('all attempts exhausted, giving up - treating as signed out'); // TEMP DEBUG
     return null;
   }
 
   checkSessionWithRetry(4, [250, 500, 750]).then((session) => {
     const ms = (performance.now() - authCheckStartedAt).toFixed(1);
+    debugLog('FINAL RESULT after ' + ms + 'ms: ' + (session ? ('signed in as ' + session.user.id) : 'signed out')); // TEMP DEBUG
     console.log('[tipout] auth: initial session check settled after', ms, 'ms', {
       hasSession: !!session,
       userId: session ? session.user.id : null,
