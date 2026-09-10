@@ -200,11 +200,57 @@
   .stats-empty { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); text-align: center; padding: 20px 0; }
   .stats-section-title { font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.06em; color: var(--ink-soft); text-transform: uppercase; margin: 20px 0 8px; }
 
-  .header-auth-btn {
-    position: absolute; top: 2px; right: 0; background: none; border: 1.3px solid var(--brass);
-    color: var(--brass); font-family: 'Space Mono', monospace; font-size: 10px; border-radius: 3px;
-    padding: 3px 8px; cursor: pointer;
+  .topbar { display: flex; align-items: center; margin-bottom: 4px; }
+  .hamburger-btn {
+    background: none; border: none; color: var(--paper); font-size: 20px;
+    line-height: 1; cursor: pointer; padding: 4px 8px 4px 0;
   }
+
+  .greeting-line {
+    text-align: center; font-family: 'Space Mono', monospace; font-size: 12px;
+    color: var(--paper); opacity: 0.85; margin: 0 0 10px;
+  }
+
+  .menu-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1150;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .menu-overlay.open { opacity: 1; pointer-events: auto; }
+
+  .menu-drawer {
+    position: fixed; top: 0; left: 0; bottom: 0; width: 260px; max-width: 82%;
+    background: var(--paper); color: var(--ink); z-index: 1160; padding: 20px 18px;
+    box-sizing: border-box; transform: translateX(-100%); transition: transform 0.25s ease;
+    box-shadow: 8px 0 24px rgba(0,0,0,0.3); overflow-y: auto;
+  }
+  .menu-drawer.open { transform: translateX(0); }
+  .menu-drawer * { box-sizing: border-box; }
+  .menu-close {
+    position: absolute; top: 8px; right: 10px; background: none; border: none;
+    color: var(--ink-soft); font-size: 20px; line-height: 1; cursor: pointer;
+  }
+  .menu-field { margin: 18px 0 14px; }
+  .menu-field label {
+    display: block; font-family: 'Space Mono', monospace; font-size: 10px;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 4px;
+  }
+  .menu-static { font-size: 13.5px; word-break: break-word; }
+  .menu-field input[type=text] {
+    width: 100%; padding: 7px 8px; border: 1.3px solid var(--rule); border-radius: 3px;
+    background: transparent; font-family: 'Archivo', sans-serif; font-size: 14px; color: var(--ink);
+  }
+  .menu-field input[type=text]:focus { outline: none; border-color: var(--brass); }
+  .menu-status-line {
+    font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--brass); font-weight: 700; margin: 14px 0 8px;
+  }
+  .menu-item {
+    display: block; width: 100%; text-align: left; padding: 10px 4px; margin: 2px 0;
+    background: none; border: none; border-top: 1px solid var(--rule); font-family: 'Archivo', sans-serif;
+    font-weight: 600; font-size: 13.5px; color: var(--ink); cursor: pointer;
+  }
+  .menu-item.danger { color: var(--owe); }
+  .menu-sub { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--ink-soft); padding: 0 4px; margin-top: -4px; }
 
   .migration-toast {
     position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 1100;
@@ -272,12 +318,36 @@
     <div class="login-status" id="loginStatus"></div>
   </div>
 </div>
+<div class="menu-overlay" id="menuOverlay"></div>
+<div class="menu-drawer" id="menuDrawer">
+  <button class="menu-close" id="menuCloseBtn" aria-label="Close">&times;</button>
+  <div id="menuSignedIn" style="display:none;">
+    <div class="menu-field">
+      <label>Email</label>
+      <div class="menu-static" id="menuEmail"></div>
+    </div>
+    <div class="menu-field">
+      <label>Display name</label>
+      <input type="text" id="menuDisplayName" placeholder="Add a name" />
+    </div>
+    <div class="menu-status-line">Free</div>
+    <button class="menu-item" id="menuGetPro">Get Pro</button>
+    <button class="menu-item danger" id="menuSignOut">Sign out</button>
+  </div>
+  <div id="menuSignedOut" style="display:none;">
+    <button class="menu-item" id="menuLinkAccount">Link account to email</button>
+    <div class="menu-sub">Sign in to save your data across devices</div>
+  </div>
+</div>
 <div id="tipout-root">
   <div id="migrationToast" class="migration-toast" style="display:none;"></div>
   <div class="ticket-wrap">
+    <div class="topbar">
+      <button class="hamburger-btn" id="hamburgerBtn" aria-label="Menu">&#9776;</button>
+    </div>
+    <div class="greeting-line" id="greetingLine"></div>
     <div class="masthead">
       <h1>Daily Tipout</h1>
-      <button class="header-auth-btn" id="authCornerBtn">Sign in</button>
     </div>
 
     <div class="tabs">
@@ -404,7 +474,6 @@
   const verifyBtn = document.getElementById('verifyCodeBtn');
   const resendBtn = document.getElementById('resendCodeBtn');
   const statusEl = document.getElementById('loginStatus');
-  const authCornerBtn = document.getElementById('authCornerBtn');
   const loginDismissBtn = document.getElementById('loginDismissBtn');
 
   let currentSession = null;
@@ -428,6 +497,7 @@
   function hideLoginOverlay() {
     loginScreen.style.display = 'none';
   }
+  window.showLoginOverlay = showLoginOverlay;
 
   async function sendCode(email) {
     const { error } = await supabaseClient.auth.signInWithOtp({
@@ -439,7 +509,6 @@
 
   function updateAuthUI(session) {
     currentSession = session;
-    authCornerBtn.textContent = session ? 'Sign out' : 'Sign in';
     window.dispatchEvent(new CustomEvent('tipout-auth-change', { detail: { user: session ? session.user : null } }));
   }
 
@@ -448,14 +517,6 @@
   supabaseClient.auth.onAuthStateChange((_event, session) => {
     updateAuthUI(session);
     if (session) hideLoginOverlay();
-  });
-
-  authCornerBtn.addEventListener('click', () => {
-    if (currentSession) {
-      if (confirm('Are you sure you want to sign out?')) supabaseClient.auth.signOut();
-    } else {
-      showLoginOverlay();
-    }
   });
 
   loginDismissBtn.addEventListener('click', hideLoginOverlay);
@@ -509,7 +570,7 @@
 (function() {
   const $ = (id) => document.getElementById(id);
   const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2 };
+  const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, displayName: '' };
   let settings = { ...DEFAULT_SETTINGS };
   let entries = [];
   let lastCalc = null;
@@ -554,10 +615,10 @@
     return e;
   }
   function settingsToRow(s, uid) {
-    return { user_id: uid, food_pct: s.foodPct, bar_pct: s.barPct, tip_pct: s.tipPct };
+    return { user_id: uid, food_pct: s.foodPct, bar_pct: s.barPct, tip_pct: s.tipPct, display_name: s.displayName || null };
   }
   function rowToSettings(r) {
-    return { foodPct: r.food_pct, barPct: r.bar_pct, tipPct: r.tip_pct };
+    return { foodPct: r.food_pct, barPct: r.bar_pct, tipPct: r.tip_pct, displayName: r.display_name || '' };
   }
 
   function fmt(n) {
@@ -604,12 +665,15 @@
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
+    $('menuDisplayName').value = settings.displayName || '';
+    renderGreeting();
   }
   async function saveSettings() {
     settings = {
       foodPct: parseFloat($('foodPct').value) || 0,
       barPct: parseFloat($('barPct').value) || 0,
       tipPct: parseFloat($('tipPct').value) || 0,
+      displayName: $('menuDisplayName').value.trim(),
     };
     if (isSignedIn()) {
       const { error } = await window.supabaseClient
@@ -619,7 +683,51 @@
       try { localStorage.setItem('tipout-settings', JSON.stringify(settings)); }
       catch (e) { console.error('settings save failed', e); }
     }
+    renderGreeting();
   }
+
+  // ---- Greeting ----
+  function renderGreeting() {
+    const hour = new Date().getHours();
+    const period = hour < 12 ? 'morning' : (hour < 17 ? 'afternoon' : 'evening');
+    const name = (settings.displayName || '').trim();
+    $('greetingLine').textContent = name ? `Good ${period}, ${name}` : `Good ${period}`;
+  }
+
+  // ---- Hamburger menu ----
+  function updateMenuAuthView() {
+    const signedIn = isSignedIn();
+    $('menuSignedIn').style.display = signedIn ? 'block' : 'none';
+    $('menuSignedOut').style.display = signedIn ? 'none' : 'block';
+    if (signedIn) {
+      $('menuEmail').textContent = currentUser.email || '';
+      $('menuDisplayName').value = settings.displayName || '';
+    }
+  }
+  function openMenu() {
+    updateMenuAuthView();
+    $('menuOverlay').classList.add('open');
+    $('menuDrawer').classList.add('open');
+  }
+  function closeMenu() {
+    $('menuOverlay').classList.remove('open');
+    $('menuDrawer').classList.remove('open');
+  }
+  $('hamburgerBtn').addEventListener('click', openMenu);
+  $('menuCloseBtn').addEventListener('click', closeMenu);
+  $('menuOverlay').addEventListener('click', closeMenu);
+  $('menuDisplayName').addEventListener('change', saveSettings);
+  $('menuGetPro').addEventListener('click', () => alert('Coming soon'));
+  $('menuSignOut').addEventListener('click', () => {
+    if (confirm('Are you sure you want to sign out?')) {
+      window.supabaseClient.auth.signOut();
+      closeMenu();
+    }
+  });
+  $('menuLinkAccount').addEventListener('click', () => {
+    closeMenu();
+    window.showLoginOverlay();
+  });
 
   // ---- Entries ----
   async function loadEntries() {
@@ -1067,6 +1175,7 @@
     if (user) await migrateLocalDataIfNeeded(user.id);
     await loadSettings();
     await loadEntries();
+    updateMenuAuthView();
   });
 
   if ('serviceWorker' in navigator) {
