@@ -673,22 +673,51 @@
     if (typeof window.hideAppLoading === 'function') window.hideAppLoading();
   }, 4000);
 
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // getSession() re-reads storage fresh on every call (it's not memoized).
+  // On some platforms (notably iOS PWAs launched cold, i.e. "closed and
+  // reopened" rather than resumed from background) the very first storage
+  // read after process launch can race ahead of the storage engine being
+  // fully attached and come back empty even though a valid session is
+  // genuinely sitting there - the exact same read moments later succeeds.
+  // Backgrounding/foregrounding never hits this because the process (and
+  // its already-initialized storage) never went away. Retrying a few times
+  // with short delays gives the storage engine the same "a moment later"
+  // chance that a real resume gets for free.
   const authCheckStartedAt = performance.now();
-  console.log('[tipout] auth: getSession() called');
-  supabaseClient.auth.getSession()
-    .then(({ data }) => {
-      const ms = (performance.now() - authCheckStartedAt).toFixed(1);
-      console.log('[tipout] auth: getSession() resolved after', ms, 'ms', {
-        hasSession: !!data.session,
-        userId: data.session ? data.session.user.id : null,
-      });
-      updateAuthUI(data.session);
-    })
-    .catch((err) => {
-      const ms = (performance.now() - authCheckStartedAt).toFixed(1);
-      console.error('[tipout] auth: getSession() rejected after', ms, 'ms, falling back to signed-out state', err);
-      updateAuthUI(null);
+  async function checkSessionWithRetry(maxAttempts, delaysMs) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log('[tipout] auth: getSession() attempt', attempt, 'called');
+      try {
+        const { data, error } = await supabaseClient.auth.getSession();
+        const ms = (performance.now() - authCheckStartedAt).toFixed(1);
+        if (error) {
+          console.error('[tipout] auth: getSession() attempt', attempt, 'errored after', ms, 'ms', error);
+        } else {
+          console.log('[tipout] auth: getSession() attempt', attempt, 'resolved after', ms, 'ms', {
+            hasSession: !!data.session,
+            userId: data.session ? data.session.user.id : null,
+          });
+          if (data.session) return data.session;
+        }
+      } catch (err) {
+        const ms = (performance.now() - authCheckStartedAt).toFixed(1);
+        console.error('[tipout] auth: getSession() attempt', attempt, 'threw after', ms, 'ms', err);
+      }
+      if (attempt < maxAttempts) await sleep(delaysMs[attempt - 1] || delaysMs[delaysMs.length - 1]);
+    }
+    return null;
+  }
+
+  checkSessionWithRetry(4, [250, 500, 750]).then((session) => {
+    const ms = (performance.now() - authCheckStartedAt).toFixed(1);
+    console.log('[tipout] auth: initial session check settled after', ms, 'ms', {
+      hasSession: !!session,
+      userId: session ? session.user.id : null,
     });
+    updateAuthUI(session);
+  });
 
   supabaseClient.auth.onAuthStateChange((_event, session) => {
     console.log('[tipout] auth: onAuthStateChange fired', {
