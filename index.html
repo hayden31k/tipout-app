@@ -574,6 +574,7 @@
   const $ = (id) => document.getElementById(id);
   const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, displayName: '' };
+  const ACTIVE_RESTAURANT_KEY = 'tipout-active-restaurant-id';
   let settings = { ...DEFAULT_SETTINGS };
   let entries = [];
   let lastCalc = null;
@@ -581,12 +582,14 @@
   let posSign = 1;
   let editPosSign = 1;
   let currentUser = null;
+  let restaurants = [];
+  let activeRestaurantId = null;
   const isSignedIn = () => !!currentUser;
 
   // ---- Supabase <-> local field mapping ----
-  function entryToRow(e, uid) {
+  function entryToRow(e, uid, restaurantId) {
     if (!e.id) e.id = crypto.randomUUID();
-    return {
+    const row = {
       id: e.id,
       user_id: uid,
       ts: e.ts,
@@ -600,6 +603,8 @@
       take_home: (typeof e.takeHome === 'number' && !isNaN(e.takeHome)) ? e.takeHome : null,
       received: !!e.received,
     };
+    if (restaurantId) row.restaurant_id = restaurantId;
+    return row;
   }
   function rowToEntry(r) {
     const e = {
@@ -689,6 +694,30 @@
     renderGreeting();
   }
 
+  // ---- Restaurants ----
+  async function fetchRestaurants(uid) {
+    const { data, error } = await window.supabaseClient
+      .from('restaurants').select('*').eq('user_id', uid).order('name', { ascending: true });
+    if (error) { console.error('restaurants load failed', error); return []; }
+    return data || [];
+  }
+  async function loadRestaurants() {
+    if (!isSignedIn()) {
+      restaurants = [];
+      activeRestaurantId = null;
+      return;
+    }
+    restaurants = await fetchRestaurants(currentUser.id);
+    let stored = null;
+    try { stored = localStorage.getItem(ACTIVE_RESTAURANT_KEY); } catch (e) {}
+    const match = restaurants.find(r => r.id === stored);
+    activeRestaurantId = match ? match.id : (restaurants[0] ? restaurants[0].id : null);
+    try {
+      if (activeRestaurantId) localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId);
+      else localStorage.removeItem(ACTIVE_RESTAURANT_KEY);
+    } catch (e) {}
+  }
+
   // ---- Greeting ----
   function renderGreeting() {
     const hour = new Date().getHours();
@@ -736,12 +765,14 @@
   async function loadEntries() {
     if (isSignedIn()) {
       const uid = currentUser.id;
-      console.log('[tipout] loadEntries: querying shifts where user_id =', uid);
-      const { data, error, status, statusText } = await window.supabaseClient
-        .from('shifts').select('*').eq('user_id', uid).order('ts', { ascending: false });
+      console.log('[tipout] loadEntries: querying shifts where user_id =', uid, 'restaurant_id =', activeRestaurantId);
+      let query = window.supabaseClient.from('shifts').select('*').eq('user_id', uid);
+      if (activeRestaurantId) query = query.eq('restaurant_id', activeRestaurantId);
+      const { data, error, status, statusText } = await query.order('ts', { ascending: false });
       console.log('[tipout] loadEntries: query result', {
         uidAtQueryTime: uid,
         currentUserIdNow: currentUser ? currentUser.id : null,
+        activeRestaurantId,
         status,
         statusText,
         rowCount: data ? data.length : null,
@@ -766,12 +797,13 @@
     }
     const uid = currentUser.id;
     if (entries.length) {
-      const rows = entries.map(e => entryToRow(e, uid));
+      const rows = entries.map(e => entryToRow(e, uid, activeRestaurantId));
       const { error: upsertErr } = await window.supabaseClient.from('shifts').upsert(rows, { onConflict: 'id' });
       if (upsertErr) { console.error('shifts save failed', upsertErr); return; }
     }
     const keepIds = entries.map(e => e.id);
-    const delBase = window.supabaseClient.from('shifts').delete().eq('user_id', uid);
+    let delBase = window.supabaseClient.from('shifts').delete().eq('user_id', uid);
+    if (activeRestaurantId) delBase = delBase.eq('restaurant_id', activeRestaurantId);
     const { error: delErr } = keepIds.length
       ? await delBase.not('id', 'in', `(${keepIds.join(',')})`)
       : await delBase;
@@ -1177,6 +1209,7 @@
     currentUser = user;
     if (user) await migrateLocalDataIfNeeded(user.id);
     await loadSettings();
+    await loadRestaurants();
     await loadEntries();
     updateMenuAuthView();
   });
