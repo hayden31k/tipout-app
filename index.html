@@ -183,15 +183,42 @@
   .receive-row input[type=checkbox] { width: 13px; height: 13px; accent-color: var(--brass); cursor: pointer; }
   .receive-row label { font-family: 'Space Mono', monospace; font-size: 10.5px; color: var(--ink-soft); cursor: pointer; }
 
-  .envelope-card { background: var(--paper); border-radius: 3px; padding: 14px 16px; margin-bottom: 10px; border: 1.5px solid var(--brass); }
-  .envelope-card .envelope-title { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+  /* Deliberately NOT ticket-paper styled like the other cards in this app -
+     white/near-white with a triangular flap, so it reads as its own
+     distinct "physical envelope" object rather than another ticket. */
+  .envelope-card {
+    position: relative;
+    background: #FEFEFC;
+    color: var(--ink);
+    box-sizing: border-box;
+    /* Rectangle body + a triangular flap peak on top, all one clipped shape
+       so the flap is the same seamless color as the body beneath it. */
+    clip-path: polygon(0 22px, 50% 0, 100% 22px, 100% 100%, 0 100%);
+    filter: drop-shadow(0 3px 5px rgba(0,0,0,0.28));
+    padding: 34px 16px 16px;
+    margin: 16px 0 12px;
+  }
+  .envelope-card::after {
+    /* A small "stamp" accent in the corner, for flavor - dashed/perforated-
+       looking and low-opacity so it reads as a decorative corner detail,
+       not a second checkbox next to the real one below. */
+    content: '';
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 15px;
+    height: 19px;
+    border: 1.3px dashed var(--ink-soft);
+    opacity: 0.35;
+  }
+  .envelope-card .envelope-title { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 13px; margin-bottom: 6px; padding-right: 26px; color: var(--ink); }
   .envelope-card .envelope-amt { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 22px; color: var(--get); margin-bottom: 6px; }
   .envelope-card .receive-row { margin-top: 8px; }
   .envelope-card .receive-row input[type=checkbox] { width: 15px; height: 15px; }
-  .envelope-card .receive-row label { font-size: 12px; }
+  .envelope-card .receive-row label { font-size: 12px; color: var(--ink-soft); }
   .recent-envelopes { margin-bottom: 12px; }
   .recent-envelopes summary { cursor: pointer; font-family: 'Space Mono', monospace; font-size: 11px; color: var(--ink-soft); padding: 4px 2px 10px; }
-  .recent-envelopes .envelope-card { border: 1px solid var(--rule); }
+  .recent-envelopes .envelope-card { filter: drop-shadow(0 2px 3px rgba(0,0,0,0.2)); }
   .recent-envelopes .envelope-card .envelope-amt { font-size: 17px; }
 
   .edit-card { background: var(--paper); border-radius: 2px; padding: 14px; margin-bottom: 8px; border: 1.5px dashed var(--brass); }
@@ -703,7 +730,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-c';
+  const APP_VERSION = '2026-09-11-d';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
