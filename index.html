@@ -404,6 +404,7 @@
     font-weight: 600; font-size: 13.5px; color: var(--ink); cursor: pointer;
   }
   .menu-item.danger { color: var(--owe); }
+  .menu-item.critical { margin-top: 16px; padding-top: 14px; border-top: 1.5px solid var(--owe); }
   .menu-sub { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--ink-soft); padding: 0 4px; margin-top: -4px; }
 
   .migration-toast {
@@ -536,6 +537,49 @@
     display: block; width: 100%; text-align: left; padding: 10px 4px; margin: 2px 0;
     background: none; border: none; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 13.5px; color: var(--ink); cursor: pointer;
   }
+
+  /* Delete account overlay */
+  #delete-account-screen {
+    --bg: #16211B; --bg-2: #1D2C22; --paper: #F0EAD6; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E; --owe: #B33A3A;
+    font-family: 'Archivo', sans-serif;
+    color: var(--ink);
+    position: fixed; inset: 0; z-index: 1300;
+    background: rgba(22, 33, 27, 0.92);
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  #delete-account-screen * { box-sizing: border-box; }
+  #delete-account-screen .delete-card {
+    position: relative; background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 340px; width: 100%;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35); text-align: center;
+  }
+  #delete-account-screen .delete-close {
+    position: absolute; top: 8px; right: 8px; width: auto; padding: 4px 9px; background: none;
+    border: none; color: var(--ink-soft); font-size: 18px; line-height: 1; cursor: pointer;
+  }
+  #delete-account-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 18px; margin: 0 0 10px; color: var(--owe); }
+  #delete-account-screen .delete-sub { font-family: 'Space Mono', monospace; font-size: 12.5px; color: var(--ink-soft); margin: 0 0 22px; line-height: 1.55; }
+  #delete-account-screen input[type=text] {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--owe); border-radius: 3px;
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink); margin-bottom: 18px;
+    letter-spacing: 0.08em; text-align: center; text-transform: uppercase;
+  }
+  #delete-account-screen input[type=text]:focus { outline: none; border-color: var(--ink); }
+  #delete-account-screen .delete-btn-row { display: flex; gap: 10px; }
+  #delete-account-screen .delete-btn-row button {
+    flex: 1; padding: 12px; border-radius: 3px; font-family: 'Archivo', sans-serif;
+    font-weight: 600; font-size: 14px; cursor: pointer; border: none;
+  }
+  #delete-account-screen .delete-cancel { background: transparent; border: 1.5px solid var(--rule); color: var(--ink); }
+  #delete-account-screen .delete-continue,
+  #delete-account-screen .delete-final { background: var(--owe); color: #fff; }
+  #delete-account-screen .delete-final:disabled { opacity: 0.45; cursor: default; }
+  #delete-account-screen .delete-status {
+    margin-top: 14px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--owe); min-height: 16px;
+  }
+  #delete-account-screen .delete-status.success { color: var(--brass); }
 </style>
 </head>
 <body>
@@ -650,6 +694,29 @@
     <button class="panel-add-another" id="restaurantPanelAddAnother">Add another restaurant</button>
   </div>
 </div>
+<div id="delete-account-screen" style="display:none;">
+  <div class="delete-card">
+    <button class="delete-close" id="deleteCloseBtn" aria-label="Close">&times;</button>
+    <div id="deleteStep1">
+      <h1>Delete your account?</h1>
+      <p class="delete-sub">This permanently removes your account and all your data — shifts, restaurants, everything. This cannot be undone.</p>
+      <div class="delete-btn-row">
+        <button type="button" class="delete-cancel" id="deleteCancelBtn1">Cancel</button>
+        <button type="button" class="delete-continue" id="deleteContinueBtn">Continue</button>
+      </div>
+    </div>
+    <div id="deleteStep2" style="display:none;">
+      <h1>Are you absolutely sure?</h1>
+      <p class="delete-sub">Type DELETE to confirm.</p>
+      <input type="text" id="deleteConfirmInput" placeholder="DELETE" autocomplete="off" autocapitalize="characters" />
+      <div class="delete-btn-row">
+        <button type="button" class="delete-cancel" id="deleteCancelBtn2">Cancel</button>
+        <button type="button" class="delete-final" id="deleteFinalBtn" disabled>Delete My Account</button>
+      </div>
+      <div class="delete-status" id="deleteStatus"></div>
+    </div>
+  </div>
+</div>
 <div class="menu-overlay" id="menuOverlay"></div>
 <div class="menu-drawer" id="menuDrawer">
   <button class="menu-close" id="menuCloseBtn" aria-label="Close">&times;</button>
@@ -669,6 +736,7 @@
     <button class="menu-item" id="menuCurrentRestaurant">Current restaurant</button>
     <button class="menu-item" id="menuGetPro">Get Pro</button>
     <button class="menu-item danger" id="menuSignOut">Sign out</button>
+    <button class="menu-item danger critical" id="menuDeleteAccount">Delete Account</button>
   </div>
   <div id="menuSignedOut" style="display:none;">
     <button class="menu-item" id="menuLinkAccount">Link account to email</button>
@@ -1628,6 +1696,105 @@
   $('menuLinkAccount').addEventListener('click', () => {
     closeMenu();
     window.showLoginOverlay();
+  });
+
+  // ---- Delete account ----
+  const deleteScreen = $('delete-account-screen');
+  const deleteStep1 = $('deleteStep1');
+  const deleteStep2 = $('deleteStep2');
+  const deleteConfirmInput = $('deleteConfirmInput');
+  const deleteFinalBtn = $('deleteFinalBtn');
+  const deleteStatus = $('deleteStatus');
+
+  function showDeleteStep1() {
+    deleteStep1.style.display = 'block';
+    deleteStep2.style.display = 'none';
+    deleteConfirmInput.value = '';
+    deleteConfirmInput.disabled = false;
+    deleteFinalBtn.disabled = true;
+    $('deleteCancelBtn2').disabled = false;
+    deleteStatus.textContent = '';
+    deleteStatus.classList.remove('success');
+    deleteScreen.style.display = 'flex';
+  }
+  function showDeleteStep2() {
+    deleteStep1.style.display = 'none';
+    deleteStep2.style.display = 'block';
+    deleteConfirmInput.focus();
+  }
+  function hideDeleteScreen() {
+    deleteScreen.style.display = 'none';
+  }
+
+  $('menuDeleteAccount').addEventListener('click', () => {
+    closeMenu();
+    showDeleteStep1();
+  });
+  $('deleteCloseBtn').addEventListener('click', hideDeleteScreen);
+  $('deleteCancelBtn1').addEventListener('click', hideDeleteScreen);
+  $('deleteCancelBtn2').addEventListener('click', hideDeleteScreen);
+  $('deleteContinueBtn').addEventListener('click', showDeleteStep2);
+  deleteConfirmInput.addEventListener('input', () => {
+    deleteFinalBtn.disabled = deleteConfirmInput.value.trim().toUpperCase() !== 'DELETE';
+  });
+  deleteConfirmInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && !deleteFinalBtn.disabled) deleteFinalBtn.click();
+  });
+
+  // The edge function's own error responses are JSON bodies on a non-2xx
+  // Response - supabase-js surfaces that as a FunctionsHttpError whose
+  // `.context` is (depending on version) either the Response itself or a
+  // wrapper exposing it as `.response`. Try both shapes rather than
+  // assuming one, so a real server-provided message ("Failed to delete
+  // shifts: ...") surfaces instead of a generic fallback.
+  async function extractFunctionErrorMessage(error) {
+    if (!error) return null;
+    try {
+      const ctx = error.context;
+      if (ctx) {
+        if (typeof ctx.json === 'function') {
+          const body = await ctx.json();
+          if (body && body.error) return body.error;
+        } else if (ctx.response && typeof ctx.response.json === 'function') {
+          const body = await ctx.response.json();
+          if (body && body.error) return body.error;
+        }
+      }
+    } catch (e) { /* fall through to generic message below */ }
+    return error.message || null;
+  }
+
+  $('deleteFinalBtn').addEventListener('click', async () => {
+    deleteFinalBtn.disabled = true;
+    $('deleteCancelBtn2').disabled = true;
+    deleteConfirmInput.disabled = true;
+    deleteStatus.classList.remove('success');
+    deleteStatus.textContent = 'Deleting your account…';
+    try {
+      const { data, error } = await window.supabaseClient.functions.invoke('delete-account');
+      if (error || !(data && data.success)) {
+        const msg = (await extractFunctionErrorMessage(error)) || (data && data.error) || 'Something went wrong. Your account was not deleted - please try again.';
+        deleteStatus.textContent = msg;
+        deleteFinalBtn.disabled = false;
+        $('deleteCancelBtn2').disabled = false;
+        deleteConfirmInput.disabled = false;
+        return;
+      }
+      deleteStatus.classList.add('success');
+      deleteStatus.textContent = 'Your account has been deleted.';
+      setTimeout(async () => {
+        hideDeleteScreen();
+        // Local-only sign-out: the account (and its session) no longer
+        // exists server-side, so there's nothing valid left to revoke -
+        // this just clears the token this device is still holding.
+        await window.supabaseClient.auth.signOut({ scope: 'local' });
+      }, 1400);
+    } catch (err) {
+      deleteStatus.textContent = 'Something went wrong. Your account was not deleted - please try again.';
+      deleteFinalBtn.disabled = false;
+      $('deleteCancelBtn2').disabled = false;
+      deleteConfirmInput.disabled = false;
+    }
   });
 
   // ---- Entries ----
