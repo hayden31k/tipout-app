@@ -74,20 +74,6 @@
      right as the reveal finishes, fixing the first version's leftover-
      trail problem - only the real, permanent logo checkmark remains. */
   .intro-anim { width: min(92vw, 520px); height: auto; overflow: visible; }
-  .intro-entry-stroke {
-    /* Trimmed: this used to fly in via its own 500ms draw-in animation
-       (introEntryDraw, stroke-dashoffset 480->0) before the checkmark
-       reveal ever started. That whole "flying in" portion is now
-       skipped entirely - the stroke starts already fully drawn/arrived
-       (dashoffset fixed at 0, no draw-in animation), so playback begins
-       right at the point the checkmark starts filling in. The fade-out
-       motion itself is unchanged, just re-timed to the new start. */
-    fill: none; stroke: var(--brass); stroke-width: 28;
-    stroke-linecap: round; stroke-linejoin: round;
-    stroke-dashoffset: 0;
-    animation: introEntryFade 180ms ease-in forwards;
-    animation-delay: 380ms;
-  }
   .intro-mask-cover {
     /* Width extracted from the real checkmark (~26px average, measured
        perpendicular to its long stroke) plus margin so the anti-aliased
@@ -103,7 +89,6 @@
     animation-delay: 380ms;
   }
 
-  @keyframes introEntryFade { from { opacity: 1; } to { opacity: 0; } }
   @keyframes introCheckReveal { to { stroke-dashoffset: 280; } }
   @keyframes introLogoBounce {
     0% { transform: scale(1); }
@@ -548,7 +533,6 @@
         <path class="intro-mask-cover" d="M 339 255 L 374 330 L 468 187" />
       </mask>
     </defs>
-    <path class="intro-entry-stroke" d="M 760 130 Q 560 160 339 255" />
     <image class="intro-logo" href="icon-512.png" x="124" y="0" width="512" height="512" mask="url(#introCheckMask)" />
   </svg>
 </div>
@@ -825,7 +809,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-m';
+  const APP_VERSION = '2026-09-11-n';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
