@@ -54,36 +54,52 @@
      markup only ever exists in the initial page parse - tab switches and
      re-renders never touch #app-loading). Runs on a fixed CSS timeline,
      completely independent of the real session-check/data-loading work,
-     which proceeds normally underneath regardless of this animation. */
-  .intro-anim { width: min(78vw, 320px); height: auto; overflow: visible; }
-  .intro-entry-line, .intro-check-line {
-    fill: none; stroke: var(--brass); stroke-width: 10;
-    stroke-linecap: round; stroke-linejoin: round;
-  }
-  .intro-entry-line {
-    stroke-dasharray: 360; stroke-dashoffset: 360;
-    animation: introEntryDraw 500ms ease-out forwards;
-  }
-  .intro-check-line {
-    stroke-dasharray: 220; stroke-dashoffset: 220;
-    animation: introCheckDraw 420ms ease-in-out forwards;
-    animation-delay: 480ms;
-  }
-  .intro-notebook {
-    transform-box: fill-box; transform-origin: 50% 50%;
-    animation: introNotebookBounce 260ms ease-out forwards;
-    animation-delay: 880ms;
-  }
-  .intro-notebook rect { fill: var(--paper); stroke: rgba(0,0,0,0.15); stroke-width: 2; }
-  .intro-coil { fill: none; stroke: var(--ink-soft); stroke-width: 2.5; }
-  .intro-t { fill: none; stroke: var(--bg); stroke-width: 14; stroke-linecap: square; }
+     which proceeds normally underneath regardless of this animation.
 
-  @keyframes introEntryDraw { to { stroke-dashoffset: 0; } }
-  @keyframes introCheckDraw { to { stroke-dashoffset: 0; } }
-  @keyframes introNotebookBounce {
+     Uses the real icon-512.png for the end result (rather than an
+     approximated hand-drawn notebook) so it's pixel-identical to the
+     actual logo. The image is masked so just its checkmark region starts
+     hidden; a small blocky "bolt" flies in from off-screen right, arcs
+     behind the logo, then travels the checkmark's own two-stroke path
+     (short down-right, long up-right) via CSS motion-path - timed so the
+     mask reveal (stroke-dashoffset, same drawing technique, but cutting
+     a hole open rather than adding a stroke) uncovers the real checkmark
+     pixels in sync with the bolt passing over them. The bolt itself
+     shrinks/fades to nothing over the same span, so nothing hand-drawn
+     is left on screen - the checkmark that ends up visible is the actual
+     image, not a separate shape. */
+  .intro-anim { width: min(92vw, 520px); height: auto; overflow: visible; }
+  .intro-logo {
+    transform-box: fill-box; transform-origin: 50% 50%;
+    animation: introLogoBounce 260ms ease-out forwards;
+    animation-delay: 850ms;
+  }
+  .intro-mask-cover {
+    fill: none; stroke: #000; stroke-width: 58;
+    stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 300; stroke-dashoffset: 0;
+    animation: introCheckReveal 340ms ease-in-out forwards;
+    animation-delay: 510ms;
+  }
+  .intro-bolt {
+    fill: var(--brass);
+    offset-path: path('M 760 120 Q 560 150 324 258 L 377 333 L 480 180');
+    offset-rotate: auto;
+    offset-distance: 0%;
+    animation: introBoltMove 850ms linear forwards, introBoltFade 850ms ease-in forwards;
+  }
+
+  @keyframes introCheckReveal { to { stroke-dashoffset: 300; } }
+  @keyframes introBoltMove { to { offset-distance: 100%; } }
+  @keyframes introBoltFade {
+    0% { opacity: 1; transform: scale(1); }
+    65% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(0.2); }
+  }
+  @keyframes introLogoBounce {
     0% { transform: scale(1); }
-    35% { transform: scale(1.1); }
-    60% { transform: scale(0.96); }
+    35% { transform: scale(1.08); }
+    60% { transform: scale(0.97); }
     100% { transform: scale(1); }
   }
   .mono { font-family: 'Space Mono', monospace; }
@@ -512,20 +528,15 @@
 </head>
 <body>
 <div id="app-loading">
-  <svg class="intro-anim" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-    <path class="intro-entry-line" d="M 400 100 Q 260 130 130 175" />
-    <g class="intro-notebook">
-      <rect x="140" y="95" width="120" height="135" rx="10" />
-      <circle class="intro-coil" cx="151" cy="95" r="4" />
-      <circle class="intro-coil" cx="169" cy="95" r="4" />
-      <circle class="intro-coil" cx="187" cy="95" r="4" />
-      <circle class="intro-coil" cx="205" cy="95" r="4" />
-      <circle class="intro-coil" cx="223" cy="95" r="4" />
-      <circle class="intro-coil" cx="241" cy="95" r="4" />
-      <circle class="intro-coil" cx="249" cy="95" r="4" />
-      <path class="intro-t" d="M 175 138 h 42 M 196 138 v 56" />
-    </g>
-    <path class="intro-check-line" d="M 130 175 L 160 205 L 250 120" />
+  <svg class="intro-anim" viewBox="0 0 760 512" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+    <defs>
+      <mask id="introCheckMask" maskUnits="userSpaceOnUse" x="0" y="0" width="760" height="512">
+        <rect x="0" y="0" width="760" height="512" fill="#fff" />
+        <path class="intro-mask-cover" d="M 324 258 L 377 333 L 480 180" />
+      </mask>
+    </defs>
+    <rect class="intro-bolt" x="-27" y="-21" width="54" height="42" rx="8" />
+    <image class="intro-logo" href="icon-512.png" x="124" y="0" width="512" height="512" mask="url(#introCheckMask)" />
   </svg>
 </div>
 <div id="login-screen" style="display:none;">
@@ -801,7 +812,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-j';
+  const APP_VERSION = '2026-09-11-k';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
