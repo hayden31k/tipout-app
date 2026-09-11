@@ -636,7 +636,7 @@
   // debug badge and by the stale-document self-heal check further down, so
   // it must keep working after TEMP DEBUG is eventually stripped out.
   // Bump on every deploy.
-  const APP_VERSION = 'debug-2026-09-10-d';
+  const APP_VERSION = 'debug-2026-09-10-e';
 
   // ===== TEMP DEBUG (remove once signed-out-on-reload bug is fixed) =====
   // Bump this string on every commit that touches this debug system, so a
@@ -824,6 +824,17 @@
   function updateAuthUI(session) {
     debugLog('updateAuthUI() called with user=' + (session ? session.user.id : null)); // TEMP DEBUG
     currentSession = session;
+    // Real-device evidence (not just simulation) showed the listener below
+    // can still register AFTER this dispatch, even with both scripts inline
+    // in the same document and the listener as script 2's first statement -
+    // on a real device, script 1 (this ~800-line block) can simply take long
+    // enough to parse/execute that the deferred (setTimeout) session check
+    // resolves and dispatches before the browser has even reached script 2.
+    // No fixed ordering assumption can reliably win that race. So: record
+    // the state here unconditionally, in a place any later-registering
+    // listener can find and replay - independent of whether anyone was
+    // listening at the moment of dispatch.
+    window.__tipoutAuthState = { user: session ? session.user : null };
     debugLog('updateAuthUI(): dispatching tipout-auth-change event...'); // TEMP DEBUG
     window.dispatchEvent(new CustomEvent('tipout-auth-change', { detail: { user: session ? session.user : null } }));
     debugLog('updateAuthUI(): tipout-auth-change event dispatch returned (listener ran synchronously if any handler ran to completion without an internal await)'); // TEMP DEBUG
@@ -999,11 +1010,19 @@
   const debugLog = window.__tipoutDebugLog || function() {}; // TEMP DEBUG
 
   let authInitialized = false;
-  debugLog('tipout-auth-change listener registered at ' + performance.now().toFixed(1) + 'ms'); // TEMP DEBUG
-  window.addEventListener('tipout-auth-change', async (ev) => {
-    debugLog('tipout-auth-change LISTENER INVOKED'); // TEMP DEBUG
+
+  // Architectural fix (replaces relying on script-load-order timing, which
+  // real-device evidence proved unwinnable even with both scripts inline in
+  // the same document): updateAuthUI() records its state on
+  // window.__tipoutAuthState the moment it fires, regardless of whether
+  // anything is listening yet. handleAuthChange is the single reconciliation
+  // path, invoked either live (via the event, for a listener that was
+  // already registered in time) or by replaying that stored state
+  // immediately below (for a listener that registers after the fact). The
+  // outcome no longer depends on which of the two ever finishes first.
+  async function handleAuthChange(user) {
+    debugLog('handleAuthChange invoked'); // TEMP DEBUG
     try {
-    const user = ev.detail.user;
     const prevId = currentUser ? currentUser.id : null;
     const nextId = user ? user.id : null;
     console.log('[tipout] auth-change received', { prevId, nextId, authInitialized });
@@ -1048,9 +1067,30 @@
     });
     } catch (err) { // TEMP DEBUG
       debugLog('auth-change LISTENER THREW: ' + err.name + ': ' + err.message); // TEMP DEBUG
-      console.error('[tipout] auth-change listener threw', err); // TEMP DEBUG
+      console.error('[tipout] auth-change handler threw', err); // TEMP DEBUG
     } // TEMP DEBUG
-  });
+  }
+
+  window.addEventListener('tipout-auth-change', (ev) => handleAuthChange(ev.detail.user));
+  debugLog('tipout-auth-change listener registered at ' + performance.now().toFixed(1) + 'ms'); // TEMP DEBUG
+
+  // Catch up on any state updateAuthUI() already recorded before this
+  // listener existed to receive it live - this is what makes the outcome
+  // independent of which script finishes first. Deferred via setTimeout
+  // (rather than called inline here) so it runs after the rest of this
+  // IIFE's own `let`/function declarations (restaurants, settings, entries,
+  // loadRestaurants, etc., further down this same script) have been
+  // evaluated - calling handleAuthChange synchronously from this early a
+  // point would otherwise hit those in their temporal dead zone. This adds
+  // no meaningful delay and no new race: the listener above is already
+  // registered by this point, so a dispatch arriving between now and this
+  // timeout firing is caught live either way.
+  setTimeout(() => {
+    if (window.__tipoutAuthState) {
+      debugLog('listener registration: found pending auth state from before registration (user=' + (window.__tipoutAuthState.user ? window.__tipoutAuthState.user.id : null) + ') - replaying it now'); // TEMP DEBUG
+      handleAuthChange(window.__tipoutAuthState.user);
+    }
+  }, 0);
 
   function hideAppLoading() {
     const el = $('app-loading');
