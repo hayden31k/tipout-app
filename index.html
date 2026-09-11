@@ -735,6 +735,7 @@
     </div>
     <button class="menu-item" id="menuCurrentRestaurant">Current restaurant</button>
     <button class="menu-item" id="menuGetPro">Get Pro</button>
+    <button class="menu-item" id="menuExportCsv">Export CSV</button>
     <button class="menu-item danger" id="menuSignOut">Sign out</button>
     <button class="menu-item danger critical" id="menuDeleteAccount">Delete Account</button>
   </div>
@@ -1687,6 +1688,71 @@
   $('menuOverlay').addEventListener('click', closeMenu);
   $('menuDisplayName').addEventListener('change', saveSettings);
   $('menuGetPro').addEventListener('click', () => alert('Coming soon'));
+
+  // ---- CSV export ----
+  // RFC 4126-style field escaping: quote (and double up internal quotes)
+  // whenever a value contains a comma, quote, or newline - restaurant names
+  // are free text a user typed in, so this is the one place in the export
+  // that actually needs it (every per-shift column below is a plain number
+  // or a fixed enum, never free text).
+  function csvField(value) {
+    const s = String(value);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function buildShiftsCsv(restaurantName, shiftEntries) {
+    const header = ['Date', 'Food Sales', 'Drink Sales', 'Charge Tip', 'POS Calculated', 'Total Tipout', 'Net', 'Cash Left With', 'Total Tips', 'Received', 'Shift Type'];
+    const lines = [csvField(restaurantName), header.map(csvField).join(',')];
+    const num = (n) => (typeof n === 'number' && !isNaN(n)) ? n.toFixed(2) : '';
+    [...shiftEntries].sort((a, b) => a.ts - b.ts).forEach((e) => {
+      const hasCash = typeof e.cashTips === 'number' && !isNaN(e.cashTips);
+      const cashAmt = hasCash ? e.cashTips : 0;
+      const owedAmt = e.net < 0 ? Math.abs(e.net) : 0;
+      const totalTips = cashAmt + owedAmt;
+      const row = [
+        toDateInputValue(e.ts),
+        num(e.foodSales),
+        num(e.barSales),
+        num(e.chargeTips),
+        num(e.posCalculated),
+        num(e.totalTipout),
+        num(e.net),
+        hasCash ? cashAmt.toFixed(2) : '',
+        totalTips.toFixed(2),
+        e.received ? 'yes' : 'no',
+        e.shiftType || '',
+      ];
+      lines.push(row.map(csvField).join(','));
+    });
+    return lines.join('\r\n');
+  }
+  function todayDateStamp() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  function triggerCsvDownload(filename, csvText) {
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  $('menuExportCsv').addEventListener('click', () => {
+    if (!isSignedIn() || !entries.length) {
+      showToast('No shifts to export yet');
+      return;
+    }
+    const restaurant = getActiveRestaurant();
+    const restaurantName = restaurant ? restaurant.name : 'Tipout';
+    const csvText = buildShiftsCsv(restaurantName, entries);
+    const safeName = restaurantName.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'Tipout';
+    triggerCsvDownload(`${safeName}-tipout-${todayDateStamp()}.csv`, csvText);
+    closeMenu();
+  });
+
   $('menuSignOut').addEventListener('click', () => {
     if (confirm('Are you sure you want to sign out?')) {
       window.supabaseClient.auth.signOut();
