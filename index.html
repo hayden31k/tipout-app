@@ -104,6 +104,27 @@
   .settings-block .field-row label { font-size: 12.5px; }
   .settings-block input[type=number] { width: 70px; font-size: 14px; }
 
+  .mode-toggle-label { font-family: 'Archivo', sans-serif; font-size: 12px; font-weight: 600; color: var(--ink); margin: 2px 0 6px; }
+  .mode-toggle { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .mode-option {
+    display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 4px;
+    border: 1.3px solid var(--rule); background: transparent; color: var(--ink-soft);
+    font-family: 'Archivo', sans-serif; font-size: 12px; line-height: 1.3; cursor: pointer;
+  }
+  .mode-option.active { border-color: var(--brass); background: rgba(176,141,87,0.16); color: var(--ink); font-weight: 600; }
+
+  .field-row-label-info { display: inline-flex; align-items: center; gap: 4px; }
+  .info-btn {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--ink-soft);
+    background: none; color: var(--ink-soft); font-size: 10px; line-height: 1; cursor: pointer; padding: 0;
+  }
+  .info-note {
+    font-family: 'Archivo', sans-serif; font-size: 11px; color: var(--ink-soft); line-height: 1.4;
+    background: rgba(0,0,0,0.05); border: 1px solid var(--rule); border-radius: 3px; padding: 8px 10px; margin: 2px 0 10px;
+  }
+  .info-note-static { font-family: 'Archivo', sans-serif; font-size: 11px; color: var(--ink-soft); line-height: 1.4; margin: 6px 0 2px; }
+
   .calc-btn {
     width: 100%; margin-top: 6px; padding: 13px; background: var(--ink); color: var(--paper);
     border: none; border-radius: 3px; font-family: 'Archivo', sans-serif; font-weight: 600;
@@ -432,7 +453,7 @@
         <input type="number" id="onboardingBarPct" step="0.1" inputmode="decimal" />
       </div>
       <div>
-        <label for="onboardingTipPct">Tip %</label>
+        <label for="onboardingTipPct">Charge tip %</label>
         <input type="number" id="onboardingTipPct" step="0.1" inputmode="decimal" />
       </div>
     </div>
@@ -446,7 +467,12 @@
     <h1>Current restaurant</h1>
     <label for="restaurantPanelName">Restaurant name</label>
     <input type="text" id="restaurantPanelName" />
-    <div class="panel-pct-row">
+    <div class="mode-toggle-label">How does your restaurant calculate tipout?</div>
+    <div class="mode-toggle">
+      <button type="button" class="mode-option active" id="restaurantPanelModeSplitBtn">Separately on food and drink sales</button>
+      <button type="button" class="mode-option" id="restaurantPanelModeCombinedBtn">One flat percentage on total sales combined</button>
+    </div>
+    <div class="panel-pct-row" id="restaurantPanelSplitPctRow">
       <div>
         <label for="restaurantPanelFoodPct">Food %</label>
         <input type="number" id="restaurantPanelFoodPct" step="0.1" inputmode="decimal" />
@@ -455,11 +481,17 @@
         <label for="restaurantPanelBarPct">Bar %</label>
         <input type="number" id="restaurantPanelBarPct" step="0.1" inputmode="decimal" />
       </div>
+    </div>
+    <div class="panel-pct-row" id="restaurantPanelCombinedPctRow" style="display:none;">
       <div>
-        <label for="restaurantPanelTipPct">Tip %</label>
-        <input type="number" id="restaurantPanelTipPct" step="0.1" inputmode="decimal" />
+        <label for="restaurantPanelCombinedPct">Tipout %</label>
+        <input type="number" id="restaurantPanelCombinedPct" step="0.1" inputmode="decimal" />
       </div>
     </div>
+    <label for="restaurantPanelTipPct" class="field-row-label-info">Charge tip %<button type="button" class="info-btn" id="restaurantPanelChargeTipInfoBtn" aria-label="What is charge tip %?">&#9432;</button></label>
+    <input type="number" id="restaurantPanelTipPct" step="0.1" inputmode="decimal" />
+    <div class="info-note" id="restaurantPanelChargeTipInfoNote" style="display:none;">The charge tip % covers the fee your restaurant is charged by their card payment processor on credit/debit tips — some restaurants pass this cost to servers, others don't. If your restaurant doesn't charge you for this, set it to 0%.</div>
+    <div class="info-note-static">These percentages don't add together — each applies separately to its own sales category, not combined.</div>
     <button class="panel-save" id="restaurantPanelSaveBtn">Save changes</button>
     <div class="panel-status" id="restaurantPanelStatus"></div>
     <hr class="panel-sep" />
@@ -512,13 +544,17 @@
       <div class="ticket">
         <div class="perf"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 
-        <div class="field-row">
+        <div class="field-row" id="splitSalesRow1">
           <label>Food sales<span class="hint">total food sold, before tax</span></label>
           <input type="number" inputmode="decimal" id="foodSales" placeholder="0.00" />
         </div>
-        <div class="field-row">
+        <div class="field-row" id="splitSalesRow2">
           <label>Drink sales<span class="hint">total bar sold, before tax</span></label>
           <input type="number" inputmode="decimal" id="barSales" placeholder="0.00" />
+        </div>
+        <div class="field-row" id="combinedSalesRow" style="display:none;">
+          <label>Total sales<span class="hint">total food + drink sold, before tax</span></label>
+          <input type="number" inputmode="decimal" id="totalSales" placeholder="0.00" />
         </div>
         <div class="field-row">
           <label>Charge tip<span class="hint">total tips on card/debit machine</span></label>
@@ -540,18 +576,29 @@
 
         <button class="settings-toggle" id="settingsToggle">edit tipout %</button>
         <div class="settings-block" id="settingsBlock" style="display:none;">
-          <div class="field-row">
+          <div class="mode-toggle-label">How does your restaurant calculate tipout?</div>
+          <div class="mode-toggle">
+            <button type="button" class="mode-option active" id="modeSplitBtn">Separately on food and drink sales</button>
+            <button type="button" class="mode-option" id="modeCombinedBtn">One flat percentage on total sales combined</button>
+          </div>
+          <div class="field-row" id="splitPctRow1">
             <label>Food tipout %</label>
             <input type="number" inputmode="decimal" id="foodPct" step="0.1" value="7.5" />
           </div>
-          <div class="field-row">
+          <div class="field-row" id="splitPctRow2">
             <label>Drink tipout %</label>
             <input type="number" inputmode="decimal" id="barPct" step="0.1" value="3" />
           </div>
+          <div class="field-row" id="combinedPctRow" style="display:none;">
+            <label>Tipout %</label>
+            <input type="number" inputmode="decimal" id="combinedPct" step="0.1" value="7.5" />
+          </div>
           <div class="field-row">
-            <label>Tip tipout %</label>
+            <label class="field-row-label-info">Charge tip %<button type="button" class="info-btn" id="chargeTipInfoBtn" aria-label="What is charge tip %?">&#9432;</button></label>
             <input type="number" inputmode="decimal" id="tipPct" step="0.1" value="2" />
           </div>
+          <div class="info-note" id="chargeTipInfoNote" style="display:none;">The charge tip % covers the fee your restaurant is charged by their card payment processor on credit/debit tips — some restaurants pass this cost to servers, others don't. If your restaurant doesn't charge you for this, set it to 0%.</div>
+          <div class="info-note-static">These percentages don't add together — each applies separately to its own sales category, not combined.</div>
         </div>
 
         <button class="calc-btn" id="calcBtn">Calculate</button>
@@ -614,7 +661,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-a';
+  const APP_VERSION = '2026-09-11-b';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -898,7 +945,7 @@
   }
   window.hideAppLoading = hideAppLoading;
   const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, displayName: '' };
+  const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, tipoutMode: 'split', displayName: '' };
   const ACTIVE_RESTAURANT_KEY = 'tipout-active-restaurant-id';
   let settings = { ...DEFAULT_SETTINGS };
   let entries = [];
@@ -999,11 +1046,13 @@
     const foodPct = restaurant ? restaurant.food_pct : (localBlob ? localBlob.foodPct : DEFAULT_SETTINGS.foodPct);
     const barPct = restaurant ? restaurant.bar_pct : (localBlob ? localBlob.barPct : DEFAULT_SETTINGS.barPct);
     const tipPct = restaurant ? restaurant.tip_pct : (localBlob ? localBlob.tipPct : DEFAULT_SETTINGS.tipPct);
+    const tipoutMode = restaurant ? (restaurant.tipout_mode || 'split') : (localBlob ? (localBlob.tipoutMode || 'split') : DEFAULT_SETTINGS.tipoutMode);
 
-    settings = { foodPct, barPct, tipPct, displayName };
+    settings = { foodPct, barPct, tipPct, tipoutMode, displayName };
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
+    updateTipoutModeUi();
     $('menuDisplayName').value = settings.displayName || '';
     renderGreeting();
   }
@@ -1021,22 +1070,51 @@
   async function persistPercentages() {
     const restaurant = isSignedIn() ? getActiveRestaurant() : null;
     if (restaurant) {
-      await updateActiveRestaurant({ food_pct: settings.foodPct, bar_pct: settings.barPct, tip_pct: settings.tipPct });
+      await updateActiveRestaurant({ food_pct: settings.foodPct, bar_pct: settings.barPct, tip_pct: settings.tipPct, tipout_mode: settings.tipoutMode });
     } else {
       try { localStorage.setItem('tipout-settings', JSON.stringify(settings)); }
       catch (e) { console.error('settings save failed', e); }
     }
   }
+  // The "food tipout %" and combined "tipout %" fields are two different DOM
+  // inputs but the same underlying setting - only one is visible at a time
+  // (see updateTipoutModeUi), so read whichever one is currently showing.
   async function saveSettings() {
+    const combined = settings.tipoutMode === 'combined';
     settings = {
-      foodPct: parseFloat($('foodPct').value) || 0,
+      foodPct: parseFloat((combined ? $('combinedPct') : $('foodPct')).value) || 0,
       barPct: parseFloat($('barPct').value) || 0,
       tipPct: parseFloat($('tipPct').value) || 0,
+      tipoutMode: settings.tipoutMode || 'split',
       displayName: $('menuDisplayName').value.trim(),
     };
     await persistPercentages();
     await persistDisplayName();
   }
+  function updateTipoutModeUi() {
+    const combined = settings.tipoutMode === 'combined';
+    $('modeSplitBtn').classList.toggle('active', !combined);
+    $('modeCombinedBtn').classList.toggle('active', combined);
+    $('splitPctRow1').style.display = combined ? 'none' : '';
+    $('splitPctRow2').style.display = combined ? 'none' : '';
+    $('combinedPctRow').style.display = combined ? '' : 'none';
+    $('combinedPct').value = settings.foodPct;
+    $('splitSalesRow1').style.display = combined ? 'none' : '';
+    $('splitSalesRow2').style.display = combined ? 'none' : '';
+    $('combinedSalesRow').style.display = combined ? '' : 'none';
+  }
+  function setTipoutMode(mode) {
+    if (mode === settings.tipoutMode) return;
+    settings.tipoutMode = mode;
+    updateTipoutModeUi();
+    saveSettings();
+  }
+  $('modeSplitBtn').addEventListener('click', () => setTipoutMode('split'));
+  $('modeCombinedBtn').addEventListener('click', () => setTipoutMode('combined'));
+  $('chargeTipInfoBtn').addEventListener('click', () => {
+    const note = $('chargeTipInfoNote');
+    note.style.display = note.style.display === 'none' ? 'block' : 'none';
+  });
 
   // ---- Restaurants ----
   function getActiveRestaurant() {
@@ -1079,13 +1157,24 @@
   }
 
   // ---- Restaurant panel ----
+  let restaurantPanelMode = 'split';
+  function updateRestaurantPanelModeUi() {
+    const combined = restaurantPanelMode === 'combined';
+    $('restaurantPanelModeSplitBtn').classList.toggle('active', !combined);
+    $('restaurantPanelModeCombinedBtn').classList.toggle('active', combined);
+    $('restaurantPanelSplitPctRow').style.display = combined ? 'none' : '';
+    $('restaurantPanelCombinedPctRow').style.display = combined ? '' : 'none';
+  }
   function openRestaurantPanel() {
     const r = getActiveRestaurant();
     if (!r) return;
     $('restaurantPanelName').value = r.name;
     $('restaurantPanelFoodPct').value = r.food_pct;
     $('restaurantPanelBarPct').value = r.bar_pct;
+    $('restaurantPanelCombinedPct').value = r.food_pct;
     $('restaurantPanelTipPct').value = r.tip_pct;
+    restaurantPanelMode = r.tipout_mode || 'split';
+    updateRestaurantPanelModeUi();
     $('restaurantPanelStatus').textContent = '';
     $('restaurant-panel').style.display = 'flex';
   }
@@ -1097,11 +1186,27 @@
     openRestaurantPanel();
   });
   $('restaurantPanelCloseBtn').addEventListener('click', closeRestaurantPanel);
+  $('restaurantPanelModeSplitBtn').addEventListener('click', () => {
+    restaurantPanelMode = 'split';
+    updateRestaurantPanelModeUi();
+  });
+  $('restaurantPanelModeCombinedBtn').addEventListener('click', () => {
+    // Carry over whatever's currently in Food % as the combined %, so
+    // switching modes mid-edit doesn't silently discard what was just typed.
+    $('restaurantPanelCombinedPct').value = $('restaurantPanelFoodPct').value;
+    restaurantPanelMode = 'combined';
+    updateRestaurantPanelModeUi();
+  });
+  $('restaurantPanelChargeTipInfoBtn').addEventListener('click', () => {
+    const note = $('restaurantPanelChargeTipInfoNote');
+    note.style.display = note.style.display === 'none' ? 'block' : 'none';
+  });
   $('restaurantPanelSaveBtn').addEventListener('click', async () => {
     const r = getActiveRestaurant();
     if (!r) return;
     const name = $('restaurantPanelName').value.trim();
-    const foodPct = parseFloat($('restaurantPanelFoodPct').value) || 0;
+    const combined = restaurantPanelMode === 'combined';
+    const foodPct = parseFloat((combined ? $('restaurantPanelCombinedPct') : $('restaurantPanelFoodPct')).value) || 0;
     const barPct = parseFloat($('restaurantPanelBarPct').value) || 0;
     const tipPct = parseFloat($('restaurantPanelTipPct').value) || 0;
     if (!name) {
@@ -1111,16 +1216,17 @@
     const btn = $('restaurantPanelSaveBtn');
     btn.disabled = true;
     $('restaurantPanelStatus').textContent = '';
-    const data = await updateActiveRestaurant({ name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct });
+    const data = await updateActiveRestaurant({ name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, tipout_mode: restaurantPanelMode });
     btn.disabled = false;
     if (!data) {
       $('restaurantPanelStatus').textContent = 'Something went wrong. Please try again.';
       return;
     }
-    settings = { ...settings, foodPct: data.food_pct, barPct: data.bar_pct, tipPct: data.tip_pct };
+    settings = { ...settings, foodPct: data.food_pct, barPct: data.bar_pct, tipPct: data.tip_pct, tipoutMode: data.tipout_mode || 'split' };
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
+    updateTipoutModeUi();
     renderMastheadTitle();
     closeRestaurantPanel();
   });
@@ -1158,7 +1264,7 @@
     const uid = currentUser.id;
     const { data: restaurant, error } = await window.supabaseClient
       .from('restaurants')
-      .insert({ user_id: uid, name: restaurantName, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct })
+      .insert({ user_id: uid, name: restaurantName, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, tipout_mode: 'split' })
       .select()
       .single();
     if (error || !restaurant) {
@@ -1179,11 +1285,12 @@
     activeRestaurantId = restaurant.id;
     try { localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId); } catch (e) {}
 
-    settings = { ...settings, foodPct, barPct, tipPct, displayName: name };
+    settings = { ...settings, foodPct, barPct, tipPct, tipoutMode: 'split', displayName: name };
     await persistDisplayName();
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
+    updateTipoutModeUi();
     $('menuDisplayName').value = settings.displayName;
 
     btn.disabled = false;
@@ -1454,8 +1561,13 @@
   }
 
   function calculate() {
-    const foodSales = parseFloat($('foodSales').value) || 0;
-    const barSales = parseFloat($('barSales').value) || 0;
+    const combined = settings.tipoutMode === 'combined';
+    // In combined mode, the single "total sales" field stands in for
+    // foodSales and barSales stays 0 - the tipout math below is unchanged
+    // either way (settings.foodPct doubles as the combined percentage; the
+    // barSales * settings.barPct term is simply 0 when there's no bar sales).
+    const foodSales = combined ? (parseFloat($('totalSales').value) || 0) : (parseFloat($('foodSales').value) || 0);
+    const barSales = combined ? 0 : (parseFloat($('barSales').value) || 0);
     const chargeTips = parseFloat($('chargeTips').value) || 0;
     const posCalculated = Math.abs(parseFloat($('posCalc').value) || 0) * posSign;
 
@@ -1485,7 +1597,7 @@
     const block = $('settingsBlock');
     block.style.display = block.style.display === 'none' ? 'block' : 'none';
   });
-  ['foodPct','barPct','tipPct'].forEach(id => $(id).addEventListener('change', saveSettings));
+  ['foodPct','barPct','tipPct','combinedPct'].forEach(id => $(id).addEventListener('change', saveSettings));
 
   $('calcBtn').addEventListener('click', calculate);
   $('cashTips').addEventListener('input', updateTakehome);
@@ -1504,7 +1616,7 @@
   });
 
   $('clearBtn').addEventListener('click', () => {
-    ['foodSales','barSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
+    ['foodSales','barSales','totalSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
     $('resultBlock').style.display = 'none';
     lastCalc = null;
     posSign = 1;
@@ -1518,7 +1630,7 @@
     entries.push(lastCalc);
     persistEntries();
     renderHistory();
-    ['foodSales','barSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
+    ['foodSales','barSales','totalSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
     $('resultBlock').style.display = 'none';
     lastCalc = null;
     posSign = 1;
