@@ -748,7 +748,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-g';
+  const APP_VERSION = '2026-09-11-h';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -1824,12 +1824,17 @@
       const entry = entries.find(e => e.id === editingId);
       if (!entry) return;
       const dateVal = $('ed-date').value;
+      // TEMP DEBUG: confirm (1) what the date input's raw value actually is
+      // at the moment of reading it, and (2) whether the parse/assignment
+      // below actually changes entry.ts, before persistEntries() ever runs.
+      console.log('[tipout] ed-save: entry.id=' + entry.id + ' raw $(ed-date).value="' + dateVal + '" entry.ts BEFORE=' + entry.ts + ' (' + new Date(entry.ts) + ')');
       if (dateVal) {
         const [yyyy, mm, dd] = dateVal.split('-').map(Number);
         const old = new Date(entry.ts);
         const updated = new Date(yyyy, mm - 1, dd, old.getHours(), old.getMinutes(), old.getSeconds(), old.getMilliseconds());
         entry.ts = updated.getTime();
       }
+      console.log('[tipout] ed-save: entry.ts AFTER=' + entry.ts + ' (' + new Date(entry.ts) + ') - changed? ' + (dateVal ? 'yes, dateVal was truthy' : 'NO - dateVal was falsy, assignment block was SKIPPED'));
       entry.foodSales = parseFloat($('ed-food').value) || 0;
       entry.barSales = parseFloat($('ed-bar').value) || 0;
       entry.chargeTips = parseFloat($('ed-charge').value) || 0;
