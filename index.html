@@ -347,6 +347,7 @@
     font-family: 'Space Mono', monospace; font-size: 12px; text-align: center;
     padding: 9px 16px; border-radius: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.3);
   }
+  .migration-toast.error { background: var(--owe); color: #fff; }
 
   /* Login overlay */
   #login-screen {
@@ -747,7 +748,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-e';
+  const APP_VERSION = '2026-09-11-f';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -1535,25 +1536,58 @@
     }
     renderHistory();
   }
+  // Returns { ok: true } or { ok: false, error }. Every caller MUST await
+  // this and check the result - a previous version fired this off
+  // unawaited and ignored the result everywhere, so a failed write (RLS
+  // rejection, network error, whatever) looked identical to a successful
+  // one until the next real fetch silently reverted it. TEMP: verbose
+  // console logging of the raw Supabase response, specifically requested
+  // to confirm server-side success/failure while investigating that bug -
+  // safe to remove once confirmed fixed.
   async function persistEntries() {
     if (!isSignedIn()) {
-      try { localStorage.setItem('tipout-entries', JSON.stringify(entries)); }
-      catch (e) { console.error('entries save failed', e); }
-      return;
+      try {
+        localStorage.setItem('tipout-entries', JSON.stringify(entries));
+        return { ok: true };
+      } catch (e) {
+        console.error('entries save failed', e);
+        return { ok: false, error: e };
+      }
     }
     const uid = currentUser.id;
     if (entries.length) {
       const rows = entries.map(e => entryToRow(e, uid, activeRestaurantId));
-      const { error: upsertErr } = await window.supabaseClient.from('shifts').upsert(rows, { onConflict: 'id' });
-      if (upsertErr) { console.error('shifts save failed', upsertErr); return; }
+      console.log('[tipout] persistEntries: upserting', rows.length, 'row(s)', rows);
+      const { data: upsertData, error: upsertErr, status: upsertStatus, statusText: upsertStatusText } =
+        await window.supabaseClient.from('shifts').upsert(rows, { onConflict: 'id' }).select();
+      console.log('[tipout] persistEntries: upsert response', {
+        status: upsertStatus, statusText: upsertStatusText, error: upsertErr,
+        rowsSent: rows.length, rowsReturned: upsertData ? upsertData.length : null, upsertData,
+      });
+      if (upsertErr) {
+        console.error('shifts save failed', upsertErr);
+        return { ok: false, error: upsertErr };
+      }
+      // Supabase/PostgREST reports this as a 200/success even if an RLS
+      // policy silently excludes a row from the update - the only tell is
+      // fewer rows coming back than were sent. This is the definitive check.
+      if (upsertData && upsertData.length !== rows.length) {
+        console.warn('[tipout] persistEntries: MISMATCH - sent', rows.length, 'row(s) but only',
+          upsertData.length, 'came back - the missing row(s) were most likely silently blocked by an RLS policy, not an error.');
+        return { ok: false, error: { message: `Only ${upsertData.length} of ${rows.length} shift(s) were actually saved (likely blocked by a permissions policy).` } };
+      }
     }
     const keepIds = entries.map(e => e.id);
     let delBase = window.supabaseClient.from('shifts').delete().eq('user_id', uid);
     if (activeRestaurantId) delBase = delBase.eq('restaurant_id', activeRestaurantId);
-    const { error: delErr } = keepIds.length
-      ? await delBase.not('id', 'in', `(${keepIds.join(',')})`)
-      : await delBase;
-    if (delErr) console.error('shifts cleanup failed', delErr);
+    const delQuery = keepIds.length ? delBase.not('id', 'in', `(${keepIds.join(',')})`) : delBase;
+    const { data: delData, error: delErr, status: delStatus } = await delQuery.select();
+    console.log('[tipout] persistEntries: cleanup-delete response', { status: delStatus, error: delErr, deletedCount: delData ? delData.length : null, deletedRows: delData });
+    if (delErr) {
+      console.error('shifts cleanup failed', delErr);
+      return { ok: false, error: delErr };
+    }
+    return { ok: true };
   }
 
   function recompute(e) {
@@ -1569,12 +1603,16 @@
   // ---- Tip envelopes (pay periods) ----
   // Signed-in + active restaurant only - everyone else sees the Log page
   // exactly as it always has (individual shift list, no envelope grouping).
-  function markPeriodReceived(start, end, received) {
+  async function markPeriodReceived(start, end, received) {
     entries.forEach(e => {
       if (e.ts >= start && e.ts < end + DAY_MS) e.received = received;
     });
-    persistEntries();
     renderHistory();
+    const result = await persistEntries();
+    if (!result.ok) {
+      showToast('Could not save - please try again.', 5000, true);
+      await loadEntries(); // resync with what's actually saved, discarding the failed change
+    }
   }
   function renderEnvelopes() {
     const section = $('envelopeSection');
@@ -1702,12 +1740,16 @@
         });
       });
       list.querySelectorAll('[data-recv]').forEach(box => {
-        box.addEventListener('change', (ev) => {
+        box.addEventListener('change', async (ev) => {
           const ts = parseFloat(ev.currentTarget.getAttribute('data-recv'));
           const entry = entries.find(e => e.ts === ts);
           if (entry) entry.received = ev.currentTarget.checked;
-          persistEntries();
           renderHistory();
+          const result = await persistEntries();
+          if (!result.ok) {
+            showToast('Could not save - please try again.', 5000, true);
+            await loadEntries();
+          }
         });
       });
     } else {
@@ -1743,11 +1785,15 @@
 
   function wireEditCard() {
     $('ed-cancel').addEventListener('click', () => { editingId = null; renderHistory(); });
-    $('ed-delete').addEventListener('click', () => {
+    $('ed-delete').addEventListener('click', async () => {
       entries = entries.filter(e => e.ts !== editingId);
       editingId = null;
-      persistEntries();
       renderHistory();
+      const result = await persistEntries();
+      if (!result.ok) {
+        showToast('Could not delete - please try again.', 5000, true);
+        await loadEntries(); // resync - loadEntries() replaces entries entirely, restoring the undeleted shift
+      }
     });
     $('ed-sign-pos').addEventListener('click', () => {
       editPosSign = 1;
@@ -1759,7 +1805,7 @@
       $('ed-sign-neg').classList.add('active');
       $('ed-sign-pos').classList.remove('active');
     });
-    $('ed-save').addEventListener('click', () => {
+    $('ed-save').addEventListener('click', async () => {
       const entry = entries.find(e => e.ts === editingId);
       if (!entry) return;
       const dateVal = $('ed-date').value;
@@ -1778,8 +1824,12 @@
       if (entry.cashTips === undefined) delete entry.takeHome;
       recompute(entry);
       editingId = null;
-      persistEntries();
       renderHistory();
+      const result = await persistEntries();
+      if (!result.ok) {
+        showToast('Could not save your changes - please try again.', 5000, true);
+        await loadEntries(); // resync with what's actually saved, discarding the failed edit
+      }
     });
   }
 
@@ -1861,10 +1911,9 @@
     $('posSignIndicator').textContent = '+';
   });
 
-  $('saveBtn').addEventListener('click', () => {
+  $('saveBtn').addEventListener('click', async () => {
     if (!lastCalc) return;
     entries.push(lastCalc);
-    persistEntries();
     renderHistory();
     ['foodSales','barSales','totalSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
     $('resultBlock').style.display = 'none';
@@ -1873,6 +1922,11 @@
     $('posSignPos').classList.add('active');
     $('posSignNeg').classList.remove('active');
     $('posSignIndicator').textContent = '+';
+    const result = await persistEntries();
+    if (!result.ok) {
+      showToast('Could not save this shift - please try again.', 5000, true);
+      await loadEntries(); // resync - loadEntries() replaces entries entirely, dropping the unsaved shift
+    }
   });
 
   // ---- Stats ----
@@ -1970,10 +2024,11 @@
   }
 
   // ---- One-time localStorage -> Supabase migration ----
-  function showToast(message, duration) {
+  function showToast(message, duration, isError) {
     const el = $('migrationToast');
     clearTimeout(showToast._timer);
     el.textContent = message;
+    el.classList.toggle('error', !!isError);
     el.style.display = 'block';
     showToast._timer = setTimeout(() => { el.style.display = 'none'; }, duration || 4000);
   }
