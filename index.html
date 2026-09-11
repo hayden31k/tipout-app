@@ -748,7 +748,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-h';
+  const APP_VERSION = '2026-09-11-i';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -1095,6 +1095,11 @@
   let entries = [];
   let lastCalc = null;
   let editingId = null;
+  // TEMP DEBUG: counts how many times wireEditCard() attaches listeners,
+  // and how many times the ed-save click handler body actually runs per
+  // click - to directly confirm or rule out stacked/duplicate listeners.
+  let wireEditCardCallCount = 0;
+  let edSaveFireCount = 0;
   let posSign = 1;
   let editPosSign = 1;
   let currentUser = null;
@@ -1799,6 +1804,8 @@
   }
 
   function wireEditCard() {
+    wireEditCardCallCount++;
+    console.log('[tipout] wireEditCard() called - call #' + wireEditCardCallCount + ' (attaching listeners to a freshly-rendered edit card)');
     $('ed-cancel').addEventListener('click', () => { editingId = null; renderHistory(); });
     $('ed-delete').addEventListener('click', async () => {
       entries = entries.filter(e => e.id !== editingId);
@@ -1821,6 +1828,8 @@
       $('ed-sign-pos').classList.remove('active');
     });
     $('ed-save').addEventListener('click', async () => {
+      edSaveFireCount++;
+      console.log('[tipout] ed-save handler FIRED - fire #' + edSaveFireCount + ' (this should increase by exactly 1 per click; more than 1 for a single click means stacked/duplicate listeners)');
       const entry = entries.find(e => e.id === editingId);
       if (!entry) return;
       const dateVal = $('ed-date').value;

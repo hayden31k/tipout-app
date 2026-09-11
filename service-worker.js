@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tipout-cache-v7';
+const CACHE_NAME = 'tipout-cache-v8';
 const FILES_TO_CACHE = [
   './',
   './index.html',
@@ -38,8 +38,30 @@ function isIndexRequest(request) {
   return path.endsWith('/') || path.endsWith('/index.html');
 }
 
+// Matches any Supabase project's REST/Auth API host. These calls carry
+// live application data (shifts, restaurants, settings, session/auth) -
+// caching them, even by accident via the generic "everything else"
+// branch below, means a write can succeed but the very next fetch of
+// that same data silently returns the pre-write cached copy, forever,
+// with no error at all. Confirmed this was happening: a GET for the
+// shifts list has a stable URL across reloads (same user/restaurant
+// filter), so the old code's cache-first handling served the same
+// stale response on every reload after the first, regardless of any
+// writes made since.
+function isSupabaseApiRequest(request) {
+  return new URL(request.url).hostname.endsWith('.supabase.co');
+}
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
+
+  if (isSupabaseApiRequest(request)) {
+    // no-store, not just "don't cache in Cache Storage": the browser's own
+    // plain HTTP cache is a separate layer underneath Cache Storage that
+    // could just as easily serve a stale response on its own.
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
 
   if (new URL(request.url).pathname.endsWith('/version.json')) {
     // Always network, never cached: the page deliberately cache-busts this
