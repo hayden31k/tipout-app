@@ -307,6 +307,19 @@
   }
   .period-btn.active { background: var(--ink); border-color: var(--ink); color: var(--paper); }
 
+  /* Shift-type filter checkboxes - same pill look as .period-btn above, as
+     checkbox labels instead of buttons since these can all be on/off
+     independently rather than picking exactly one. */
+  .filter-pill-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .filter-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 10px; border-radius: 12px; border: 1.3px solid var(--ink-soft);
+    background: transparent; color: var(--ink-soft); font-family: 'Space Mono', monospace;
+    font-size: 11px; cursor: pointer;
+  }
+  .filter-pill:has(input:checked) { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .filter-pill input[type=checkbox] { accent-color: var(--brass); cursor: pointer; margin: 0; }
+
   .custom-range-row { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
   .custom-range-row input[type=date] {
     font-family: 'Space Mono', monospace; font-size: 12px; padding: 5px 6px;
@@ -706,6 +719,15 @@
           <button type="button" class="sign-btn" id="posSignNeg">Negative</button>
         </div>
 
+        <div class="field-row">
+          <label>Shift type<span class="hint">optional</span></label>
+        </div>
+        <div class="sign-row" id="shiftTypeRow" style="justify-content:flex-start;">
+          <button type="button" class="sign-btn" data-shift-type="AM">AM</button>
+          <button type="button" class="sign-btn" data-shift-type="PM">PM</button>
+          <button type="button" class="sign-btn" data-shift-type="BD">BD</button>
+        </div>
+
         <hr class="dashed" />
 
         <button class="settings-toggle" id="settingsToggle">edit tipout %</button>
@@ -797,6 +819,11 @@
           <input type="date" id="rangeEnd" />
           <button id="applyRange">Apply</button>
         </div>
+        <div class="filter-pill-row" id="shiftTypeFilterRow">
+          <label class="filter-pill"><input type="checkbox" value="AM" checked /> AM</label>
+          <label class="filter-pill"><input type="checkbox" value="PM" checked /> PM</label>
+          <label class="filter-pill"><input type="checkbox" value="BD" checked /> BD</label>
+        </div>
 
         <div id="statsContent"><div class="stats-empty">Log a few shifts to see your numbers here.</div></div>
       </div>
@@ -809,7 +836,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-n';
+  const APP_VERSION = '2026-09-11-o';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -1184,6 +1211,7 @@
   let edSaveFireCount = 0;
   let posSign = 1;
   let editPosSign = 1;
+  let shiftType = null; // 'AM' | 'PM' | 'BD' | null - optional, no default
   let currentUser = null;
   let restaurants = [];
   let activeRestaurantId = null;
@@ -1207,6 +1235,7 @@
       received: !!e.received,
     };
     if (restaurantId) row.restaurant_id = restaurantId;
+    if (e.shiftType) row.shift_type = e.shiftType;
     return row;
   }
   function rowToEntry(r) {
@@ -1223,6 +1252,7 @@
     };
     if (r.cash_tips !== null && r.cash_tips !== undefined) e.cashTips = r.cash_tips;
     if (r.take_home !== null && r.take_home !== undefined) e.takeHome = r.take_home;
+    if (r.shift_type !== null && r.shift_type !== undefined) e.shiftType = r.shift_type;
     return e;
   }
   function fmt(n) {
@@ -1977,6 +2007,7 @@
     const tipoutPctOfSales = totalSales > 0 ? (totalTipout / totalSales * 100) : null;
 
     lastCalc = { id: crypto.randomUUID(), foodSales, barSales, chargeTips, posCalculated, totalTipout, net: whatYouOwe, ts: Date.now() };
+    if (shiftType) lastCalc.shiftType = shiftType;
 
     $('resultAmount').textContent = fmt(Math.abs(whatYouOwe));
     $('resultAmount').className = 'amount ' + (whatYouOwe >= 0 ? 'owe' : 'get');
@@ -2012,6 +2043,24 @@
     $('posSignIndicator').textContent = '-';
   });
 
+  function resetShiftTypeButtons() {
+    shiftType = null;
+    document.querySelectorAll('#shiftTypeRow .sign-btn').forEach(b => b.classList.remove('active'));
+  }
+  document.querySelectorAll('#shiftTypeRow .sign-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.getAttribute('data-shift-type');
+      if (shiftType === type) {
+        // Optional field - clicking the already-active option deselects it,
+        // going back to "no shift type chosen" rather than forcing a pick.
+        resetShiftTypeButtons();
+      } else {
+        shiftType = type;
+        document.querySelectorAll('#shiftTypeRow .sign-btn').forEach(b => b.classList.toggle('active', b === btn));
+      }
+    });
+  });
+
   $('clearBtn').addEventListener('click', () => {
     ['foodSales','barSales','totalSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
     $('resultBlock').style.display = 'none';
@@ -2020,6 +2069,7 @@
     $('posSignPos').classList.add('active');
     $('posSignNeg').classList.remove('active');
     $('posSignIndicator').textContent = '+';
+    resetShiftTypeButtons();
   });
 
   $('saveBtn').addEventListener('click', async () => {
@@ -2033,6 +2083,7 @@
     $('posSignPos').classList.add('active');
     $('posSignNeg').classList.remove('active');
     $('posSignIndicator').textContent = '+';
+    resetShiftTypeButtons();
     const result = await persistEntries();
     if (!result.ok) {
       showToast('Could not save this shift - please try again.', 5000, true);
@@ -2044,6 +2095,7 @@
   let statsPeriod = '7d';
   let customStart = null;
   let customEnd = null;
+  let shiftTypeFilters = new Set(['AM', 'PM', 'BD']); // all checked = unfiltered
 
   function getRangeBounds(period) {
     const now = new Date();
@@ -2080,6 +2132,14 @@
     customEnd = $('rangeEnd').value;
     if (customStart && customEnd) renderStats();
   });
+  document.querySelectorAll('#shiftTypeFilterRow input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      shiftTypeFilters = new Set(
+        [...document.querySelectorAll('#shiftTypeFilterRow input[type=checkbox]:checked')].map(c => c.value)
+      );
+      renderStats();
+    });
+  });
 
   function renderStats() {
     const el = $('statsContent');
@@ -2088,7 +2148,13 @@
       return;
     }
     const { start, end } = getRangeBounds(statsPeriod);
-    const inRange = entries.filter(e => e.ts >= start && e.ts <= end);
+    // All three checked = no filter applied (everything shown, including
+    // shifts with no shiftType set). Narrowing the filter at all excludes
+    // shifts with no shiftType, since they don't match any checked type.
+    const allShiftTypesOn = shiftTypeFilters.size === 3;
+    const inRange = entries
+      .filter(e => e.ts >= start && e.ts <= end)
+      .filter(e => allShiftTypesOn || (e.shiftType && shiftTypeFilters.has(e.shiftType)));
 
     if (!inRange.length) {
       el.innerHTML = '<div class="stats-empty">No shifts logged in this period.</div>';
