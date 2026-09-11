@@ -183,6 +183,17 @@
   .receive-row input[type=checkbox] { width: 13px; height: 13px; accent-color: var(--brass); cursor: pointer; }
   .receive-row label { font-family: 'Space Mono', monospace; font-size: 10.5px; color: var(--ink-soft); cursor: pointer; }
 
+  .envelope-card { background: var(--paper); border-radius: 3px; padding: 14px 16px; margin-bottom: 10px; border: 1.5px solid var(--brass); }
+  .envelope-card .envelope-title { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+  .envelope-card .envelope-amt { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 22px; color: var(--get); margin-bottom: 6px; }
+  .envelope-card .receive-row { margin-top: 8px; }
+  .envelope-card .receive-row input[type=checkbox] { width: 15px; height: 15px; }
+  .envelope-card .receive-row label { font-size: 12px; }
+  .recent-envelopes { margin-bottom: 12px; }
+  .recent-envelopes summary { cursor: pointer; font-family: 'Space Mono', monospace; font-size: 11px; color: var(--ink-soft); padding: 4px 2px 10px; }
+  .recent-envelopes .envelope-card { border: 1px solid var(--rule); }
+  .recent-envelopes .envelope-card .envelope-amt { font-size: 17px; }
+
   .edit-card { background: var(--paper); border-radius: 2px; padding: 14px; margin-bottom: 8px; border: 1.5px dashed var(--brass); }
   .edit-card .field-row { margin: 8px 0; }
   .edit-card .field-row label { font-size: 12px; }
@@ -396,10 +407,11 @@
     display: block; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.05em;
     text-transform: uppercase; color: var(--ink-soft); margin: 14px 0 4px;
   }
-  #restaurant-panel input[type=text], #restaurant-panel input[type=number] {
+  #restaurant-panel input[type=text], #restaurant-panel input[type=number], #restaurant-panel select {
     width: 100%; padding: 9px 10px; border: 1.5px solid var(--rule); border-radius: 3px;
     background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink);
   }
+  #restaurant-panel select { background: var(--paper); }
   #restaurant-panel input:focus { outline: none; border-color: var(--ink); }
   #restaurant-panel .panel-pct-row { display: flex; gap: 8px; }
   #restaurant-panel .panel-pct-row > div { flex: 1; }
@@ -492,6 +504,22 @@
     <input type="number" id="restaurantPanelTipPct" step="0.1" inputmode="decimal" />
     <div class="info-note" id="restaurantPanelChargeTipInfoNote" style="display:none;">The charge tip % covers the fee your restaurant is charged by their card payment processor on credit/debit tips — some restaurants pass this cost to servers, others don't. If your restaurant doesn't charge you for this, set it to 0%.</div>
     <div class="info-note-static">These percentages don't add together — each applies separately to its own sales category, not combined.</div>
+    <div class="mode-toggle-label">How often are tips paid out?</div>
+    <label for="restaurantPanelCadence">Payout schedule</label>
+    <select id="restaurantPanelCadence">
+      <option value="weekly">Weekly</option>
+      <option value="biweekly">Every two weeks</option>
+    </select>
+    <label for="restaurantPanelStartDay">Period starts on</label>
+    <select id="restaurantPanelStartDay">
+      <option value="0">Sunday</option>
+      <option value="1">Monday</option>
+      <option value="2">Tuesday</option>
+      <option value="3">Wednesday</option>
+      <option value="4">Thursday</option>
+      <option value="5">Friday</option>
+      <option value="6">Saturday</option>
+    </select>
     <button class="panel-save" id="restaurantPanelSaveBtn">Save changes</button>
     <div class="panel-status" id="restaurantPanelStatus"></div>
     <hr class="panel-sep" />
@@ -629,6 +657,20 @@
     </div>
 
     <div class="page" id="pageLog">
+      <div id="envelopeSection" style="display:none;">
+        <div class="envelope-card" id="envelopeCurrentCard">
+          <div class="envelope-title" id="envelopeCurrentTitle">Your tip envelope</div>
+          <div class="envelope-amt" id="envelopeCurrentAmt">$0.00</div>
+          <div class="receive-row">
+            <input type="checkbox" id="envelopeCurrentCheckbox" />
+            <label for="envelopeCurrentCheckbox">I received this envelope</label>
+          </div>
+        </div>
+        <details class="recent-envelopes" id="recentEnvelopesSection" style="display:none;">
+          <summary id="recentEnvelopesSummary">Recent envelopes</summary>
+          <div id="recentEnvelopesList"></div>
+        </details>
+      </div>
       <div class="pending-banner" id="pendingTotal"></div>
       <div id="historyList"><div class="history-empty">No shifts logged yet.</div></div>
     </div>
@@ -661,7 +703,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-b';
+  const APP_VERSION = '2026-09-11-c';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -945,6 +987,63 @@
   }
   window.hideAppLoading = hideAppLoading;
   const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const DAY_NAMES_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  // ---- Tip envelope (pay period) math ----
+  // 'YYYY-MM-DD' -> local midnight Date, matching how toDateInputValue reads
+  // dates back out (avoids the classic new Date('YYYY-MM-DD') UTC-parsing
+  // pitfall, which can land a day off depending on local timezone).
+  function parseDateOnly(str) {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  function startOfDay(ts) {
+    const d = new Date(ts);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+  // Start-of-day timestamp for the most recent occurrence of `startDay`
+  // (0=Sun..6=Sat) on or before the day containing `ts`.
+  function mostRecentWeekStart(ts, startDay) {
+    const day = startOfDay(ts);
+    const d = new Date(day);
+    const diff = (d.getDay() - startDay + 7) % 7;
+    d.setDate(d.getDate() - diff);
+    return d.getTime();
+  }
+  // Returns { start, end } start-of-day timestamps for the pay period
+  // containing `ts`, per the given restaurant's payout settings. Never
+  // reads or writes entries/received state - period boundaries are always
+  // computed fresh from current settings, so changing them can't reshuffle
+  // any existing shift's period or received status.
+  function getPayPeriod(ts, restaurant) {
+    const startDay = (restaurant && typeof restaurant.payout_start_day === 'number') ? restaurant.payout_start_day : 0;
+    const cadence = (restaurant && restaurant.payout_cadence) || 'weekly';
+    const weekStart = mostRecentWeekStart(ts, startDay);
+    if (cadence !== 'biweekly') {
+      return { start: weekStart, end: weekStart + 6 * DAY_MS };
+    }
+    const anchor = (restaurant && restaurant.payout_anchor_date)
+      ? mostRecentWeekStart(parseDateOnly(restaurant.payout_anchor_date).getTime(), startDay)
+      : weekStart;
+    const weeksSince = Math.round((weekStart - anchor) / (7 * DAY_MS));
+    const parity = ((weeksSince % 2) + 2) % 2;
+    const start = parity === 1 ? weekStart - 7 * DAY_MS : weekStart;
+    return { start, end: start + 13 * DAY_MS };
+  }
+  function formatPeriodRange(start, end) {
+    const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+    return new Date(start).toLocaleDateString(undefined, opts) + ' – ' + new Date(end).toLocaleDateString(undefined, opts);
+  }
+  function sumTotalTips(list) {
+    return list.reduce((sum, e) => {
+      const hasCash = typeof e.cashTips === 'number' && !isNaN(e.cashTips);
+      const cashAmt = hasCash ? e.cashTips : 0;
+      const owedAmt = e.net < 0 ? Math.abs(e.net) : 0;
+      return sum + cashAmt + owedAmt;
+    }, 0);
+  }
   const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, tipoutMode: 'split', displayName: '' };
   const ACTIVE_RESTAURANT_KEY = 'tipout-active-restaurant-id';
   let settings = { ...DEFAULT_SETTINGS };
@@ -1175,6 +1274,8 @@
     $('restaurantPanelTipPct').value = r.tip_pct;
     restaurantPanelMode = r.tipout_mode || 'split';
     updateRestaurantPanelModeUi();
+    $('restaurantPanelCadence').value = r.payout_cadence || 'weekly';
+    $('restaurantPanelStartDay').value = String(typeof r.payout_start_day === 'number' ? r.payout_start_day : 0);
     $('restaurantPanelStatus').textContent = '';
     $('restaurant-panel').style.display = 'flex';
   }
@@ -1213,10 +1314,25 @@
       $('restaurantPanelStatus').textContent = 'Restaurant name is required.';
       return;
     }
+    const prevCadence = r.payout_cadence || 'weekly';
+    const prevStartDay = typeof r.payout_start_day === 'number' ? r.payout_start_day : 0;
+    const payoutCadence = $('restaurantPanelCadence').value === 'biweekly' ? 'biweekly' : 'weekly';
+    const payoutStartDay = parseInt($('restaurantPanelStartDay').value, 10) || 0;
+    // Only ever set once: the first time biweekly is chosen with no anchor
+    // yet, anchor it to the most recent occurrence of the chosen start day.
+    // Purely a period-boundary reference point - never touches any existing
+    // shift or its received status.
+    let payoutAnchorDate = r.payout_anchor_date || null;
+    if (payoutCadence === 'biweekly' && !payoutAnchorDate) {
+      payoutAnchorDate = toDateInputValue(mostRecentWeekStart(Date.now(), payoutStartDay));
+    }
     const btn = $('restaurantPanelSaveBtn');
     btn.disabled = true;
     $('restaurantPanelStatus').textContent = '';
-    const data = await updateActiveRestaurant({ name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, tipout_mode: restaurantPanelMode });
+    const data = await updateActiveRestaurant({
+      name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, tipout_mode: restaurantPanelMode,
+      payout_cadence: payoutCadence, payout_start_day: payoutStartDay, payout_anchor_date: payoutAnchorDate,
+    });
     btn.disabled = false;
     if (!data) {
       $('restaurantPanelStatus').textContent = 'Something went wrong. Please try again.';
@@ -1229,6 +1345,11 @@
     updateTipoutModeUi();
     renderMastheadTitle();
     closeRestaurantPanel();
+    if (payoutCadence !== prevCadence || payoutStartDay !== prevStartDay) {
+      const cadenceLabel = payoutCadence === 'biweekly' ? 'every two weeks' : 'weekly';
+      showToast(`Going forward, your tips will be tracked ${cadenceLabel} starting ${DAY_NAMES_FULL[payoutStartDay]}.`);
+    }
+    renderHistory();
   });
   $('restaurantPanelAddAnother').addEventListener('click', () => {
     alert('Adding multiple restaurants is a Pro feature — upgrade to Pro to add more');
@@ -1264,7 +1385,7 @@
     const uid = currentUser.id;
     const { data: restaurant, error } = await window.supabaseClient
       .from('restaurants')
-      .insert({ user_id: uid, name: restaurantName, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, tipout_mode: 'split' })
+      .insert({ user_id: uid, name: restaurantName, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, tipout_mode: 'split', payout_cadence: 'weekly', payout_start_day: 0 })
       .select()
       .single();
     if (error || !restaurant) {
@@ -1401,7 +1522,78 @@
     return e;
   }
 
+  // ---- Tip envelopes (pay periods) ----
+  // Signed-in + active restaurant only - everyone else sees the Log page
+  // exactly as it always has (individual shift list, no envelope grouping).
+  function markPeriodReceived(start, end, received) {
+    entries.forEach(e => {
+      if (e.ts >= start && e.ts < end + DAY_MS) e.received = received;
+    });
+    persistEntries();
+    renderHistory();
+  }
+  function renderEnvelopes() {
+    const section = $('envelopeSection');
+    const restaurant = isSignedIn() ? getActiveRestaurant() : null;
+    if (!restaurant) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+
+    const groups = new Map();
+    entries.forEach(e => {
+      const { start, end } = getPayPeriod(e.ts, restaurant);
+      if (!groups.has(start)) groups.set(start, { start, end, entries: [] });
+      groups.get(start).entries.push(e);
+    });
+
+    const current = getPayPeriod(Date.now(), restaurant);
+    const currentEntries = groups.has(current.start) ? groups.get(current.start).entries : [];
+    const currentAllReceived = currentEntries.length > 0 && currentEntries.every(e => e.net >= 0 || e.received);
+    $('envelopeCurrentTitle').textContent = 'Your tip envelope: ' + formatPeriodRange(current.start, current.end);
+    $('envelopeCurrentAmt').textContent = fmt(sumTotalTips(currentEntries));
+    const currentBox = $('envelopeCurrentCheckbox');
+    currentBox.checked = currentAllReceived;
+    currentBox.dataset.start = current.start;
+    currentBox.dataset.end = current.end;
+
+    const pastPending = [...groups.values()]
+      .filter(g => g.start < current.start && g.entries.some(e => e.net < 0 && !e.received))
+      .sort((a, b) => b.start - a.start)
+      .slice(0, 3);
+
+    const recentSection = $('recentEnvelopesSection');
+    if (!pastPending.length) {
+      recentSection.style.display = 'none';
+      $('recentEnvelopesList').innerHTML = '';
+    } else {
+      recentSection.style.display = 'block';
+      $('recentEnvelopesSummary').textContent = `Recent envelopes (${pastPending.length})`;
+      $('recentEnvelopesList').innerHTML = pastPending.map(g => `
+        <div class="envelope-card">
+          <div class="envelope-title">${formatPeriodRange(g.start, g.end)}</div>
+          <div class="envelope-amt">${fmt(sumTotalTips(g.entries))}</div>
+          <div class="receive-row">
+            <input type="checkbox" id="envRecv-${g.start}" data-start="${g.start}" data-end="${g.end}" />
+            <label for="envRecv-${g.start}">I received this envelope</label>
+          </div>
+        </div>`).join('');
+      $('recentEnvelopesList').querySelectorAll('[data-start]').forEach(box => {
+        box.addEventListener('change', (ev) => {
+          markPeriodReceived(parseFloat(ev.currentTarget.dataset.start), parseFloat(ev.currentTarget.dataset.end), ev.currentTarget.checked);
+        });
+      });
+    }
+  }
+  $('envelopeCurrentCheckbox').addEventListener('change', (ev) => {
+    const start = parseFloat(ev.currentTarget.dataset.start);
+    const end = parseFloat(ev.currentTarget.dataset.end);
+    if (!isNaN(start) && !isNaN(end)) markPeriodReceived(start, end, ev.currentTarget.checked);
+  });
+
   function renderHistory() {
+    renderEnvelopes();
     const list = $('historyList');
     if (!entries.length) {
       list.innerHTML = '<div class="history-empty">No shifts logged yet.</div>';
