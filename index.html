@@ -185,18 +185,35 @@
 
   /* Deliberately NOT ticket-paper styled like the other cards in this app -
      white/near-white with a triangular flap, so it reads as its own
-     distinct "physical envelope" object rather than another ticket. */
+     distinct "physical envelope" object rather than another ticket. The
+     card itself stays a plain rectangle (same rounded corners as the
+     app's other cards, real drop-shadow) - the flap is a separate
+     triangular element layered on top of its upper area, not a clip on
+     the card's own outline (clipping the whole card produced a pentagon,
+     not an envelope). */
   .envelope-card {
     position: relative;
     background: #FEFEFC;
     color: var(--ink);
+    border-radius: 3px;
     box-sizing: border-box;
-    /* Rectangle body + a triangular flap peak on top, all one clipped shape
-       so the flap is the same seamless color as the body beneath it. */
-    clip-path: polygon(0 22px, 50% 0, 100% 22px, 100% 100%, 0 100%);
     filter: drop-shadow(0 3px 5px rgba(0,0,0,0.28));
-    padding: 34px 16px 16px;
+    padding: 46px 16px 16px;
     margin: 16px 0 12px;
+  }
+  .envelope-card::before {
+    /* The triangular flap - a separate, purely decorative element
+       overlapping the card's own top area. A hair deeper than the pure-
+       white body (still unmistakably white/near-white, not a second
+       color) so the fold actually reads as a shape, like the natural
+       shading of a folded paper flap, plus its own soft shadow. */
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 40px;
+    background: #F3F1EA;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.18));
   }
   .envelope-card::after {
     /* A small "stamp" accent in the corner, for flavor - dashed/perforated-
@@ -204,7 +221,7 @@
        not a second checkbox next to the real one below. */
     content: '';
     position: absolute;
-    top: 10px;
+    top: 9px;
     right: 12px;
     width: 15px;
     height: 19px;
@@ -730,7 +747,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-d';
+  const APP_VERSION = '2026-09-11-e';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
