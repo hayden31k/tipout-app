@@ -748,7 +748,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-f';
+  const APP_VERSION = '2026-09-11-g';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -1536,6 +1536,15 @@
     }
     renderHistory();
   }
+  // TEMP: flattened one-line-per-row description for the console logging
+  // below, so the literal id/ts/date values are visible without expanding
+  // a collapsed object preview in devtools. Safe to remove once confirmed
+  // fixed.
+  function describeRowForLog(r) {
+    const d = new Date(r.ts);
+    const dateStr = isNaN(d.getTime()) ? 'INVALID DATE' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    return `id=${r.id} ts=${r.ts} (${dateStr}) received=${r.received}`;
+  }
   // Returns { ok: true } or { ok: false, error }. Every caller MUST await
   // this and check the result - a previous version fired this off
   // unawaited and ignored the result everywhere, so a failed write (RLS
@@ -1557,13 +1566,17 @@
     const uid = currentUser.id;
     if (entries.length) {
       const rows = entries.map(e => entryToRow(e, uid, activeRestaurantId));
-      console.log('[tipout] persistEntries: upserting', rows.length, 'row(s)', rows);
+      // Flattened plain-text, one line per row - NOT a collapsed object
+      // preview - so the literal id/ts/date being sent vs. what actually
+      // comes back is visible without clicking to expand anything.
+      console.log('[tipout] persistEntries: upserting ' + rows.length + ' row(s):');
+      rows.forEach(r => console.log('  row ' + describeRowForLog(r)));
       const { data: upsertData, error: upsertErr, status: upsertStatus, statusText: upsertStatusText } =
         await window.supabaseClient.from('shifts').upsert(rows, { onConflict: 'id' }).select();
-      console.log('[tipout] persistEntries: upsert response', {
-        status: upsertStatus, statusText: upsertStatusText, error: upsertErr,
-        rowsSent: rows.length, rowsReturned: upsertData ? upsertData.length : null, upsertData,
-      });
+      console.log('[tipout] persistEntries: upsert response - status=' + upsertStatus + ' ' + upsertStatusText
+        + ' error=' + (upsertErr ? JSON.stringify(upsertErr) : 'null')
+        + ' sent=' + rows.length + ' returned=' + (upsertData ? upsertData.length : 'null'));
+      if (upsertData) upsertData.forEach(r => console.log('  returned ' + describeRowForLog(r)));
       if (upsertErr) {
         console.error('shifts save failed', upsertErr);
         return { ok: false, error: upsertErr };
@@ -1582,7 +1595,9 @@
     if (activeRestaurantId) delBase = delBase.eq('restaurant_id', activeRestaurantId);
     const delQuery = keepIds.length ? delBase.not('id', 'in', `(${keepIds.join(',')})`) : delBase;
     const { data: delData, error: delErr, status: delStatus } = await delQuery.select();
-    console.log('[tipout] persistEntries: cleanup-delete response', { status: delStatus, error: delErr, deletedCount: delData ? delData.length : null, deletedRows: delData });
+    console.log('[tipout] persistEntries: cleanup-delete response - status=' + delStatus
+      + ' error=' + (delErr ? JSON.stringify(delErr) : 'null') + ' deletedCount=' + (delData ? delData.length : 'null'));
+    if (delData) delData.forEach(r => console.log('  deleted ' + describeRowForLog(r)));
     if (delErr) {
       console.error('shifts cleanup failed', delErr);
       return { ok: false, error: delErr };
@@ -1685,7 +1700,7 @@
     const sorted = [...entries].sort((a, b) => b.ts - a.ts);
 
     list.innerHTML = sorted.map(e => {
-      if (editingId === e.ts) return renderEditCard(e);
+      if (editingId === e.id) return renderEditCard(e);
 
       const d = new Date(e.ts);
       const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -1710,11 +1725,11 @@
 
       const receiveRow = e.net < 0 ? `
         <div class="receive-row">
-          <input type="checkbox" id="recv-${e.ts}" data-recv="${e.ts}" ${e.received ? 'checked' : ''} />
-          <label for="recv-${e.ts}">${e.received ? 'received' : 'mark received'}</label>
+          <input type="checkbox" id="recv-${e.id}" data-recv="${e.id}" ${e.received ? 'checked' : ''} />
+          <label for="recv-${e.id}">${e.received ? 'received' : 'mark received'}</label>
         </div>` : '';
       const receivedCls = e.received ? 'received' : '';
-      return `<div class="copy ${receivedCls}" data-id="${e.ts}">
+      return `<div class="copy ${receivedCls}" data-id="${e.id}">
         <div class="meta">
           <div class="date">${dateStr}</div>
           <div class="sub">F ${e.foodSales} &middot; D ${e.barSales}</div>
@@ -1728,21 +1743,21 @@
           <div class="amt get">${fmt(totalTips)}</div>
           <div class="cash">${subLine}</div>
         </div>
-        <button class="edit-btn" data-edit="${e.ts}">edit</button>
+        <button class="edit-btn" data-edit="${e.id}">edit</button>
       </div>`;
     }).join('');
 
     if (editingId === null) {
       list.querySelectorAll('[data-edit]').forEach(btn => {
         btn.addEventListener('click', (ev) => {
-          editingId = parseFloat(ev.currentTarget.getAttribute('data-edit'));
+          editingId = ev.currentTarget.getAttribute('data-edit');
           renderHistory();
         });
       });
       list.querySelectorAll('[data-recv]').forEach(box => {
         box.addEventListener('change', async (ev) => {
-          const ts = parseFloat(ev.currentTarget.getAttribute('data-recv'));
-          const entry = entries.find(e => e.ts === ts);
+          const id = ev.currentTarget.getAttribute('data-recv');
+          const entry = entries.find(e => e.id === id);
           if (entry) entry.received = ev.currentTarget.checked;
           renderHistory();
           const result = await persistEntries();
@@ -1764,7 +1779,7 @@
 
   function renderEditCard(e) {
     editPosSign = e.posCalculated < 0 ? -1 : 1;
-    return `<div class="edit-card" data-editid="${e.ts}">
+    return `<div class="edit-card" data-editid="${e.id}">
       <div class="field-row"><label>Date</label><input type="date" id="ed-date" value="${toDateInputValue(e.ts)}" /></div>
       <div class="field-row"><label>Food sales</label><input type="number" id="ed-food" value="${e.foodSales}" /></div>
       <div class="field-row"><label>Drink sales</label><input type="number" id="ed-bar" value="${e.barSales}" /></div>
@@ -1786,7 +1801,7 @@
   function wireEditCard() {
     $('ed-cancel').addEventListener('click', () => { editingId = null; renderHistory(); });
     $('ed-delete').addEventListener('click', async () => {
-      entries = entries.filter(e => e.ts !== editingId);
+      entries = entries.filter(e => e.id !== editingId);
       editingId = null;
       renderHistory();
       const result = await persistEntries();
@@ -1806,7 +1821,7 @@
       $('ed-sign-pos').classList.remove('active');
     });
     $('ed-save').addEventListener('click', async () => {
-      const entry = entries.find(e => e.ts === editingId);
+      const entry = entries.find(e => e.id === editingId);
       if (!entry) return;
       const dateVal = $('ed-date').value;
       if (dateVal) {
