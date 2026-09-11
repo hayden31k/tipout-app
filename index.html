@@ -49,6 +49,43 @@
     background: var(--bg); color: var(--paper);
     font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
   }
+
+  /* One-time intro animation, plays only on a genuine fresh app load (this
+     markup only ever exists in the initial page parse - tab switches and
+     re-renders never touch #app-loading). Runs on a fixed CSS timeline,
+     completely independent of the real session-check/data-loading work,
+     which proceeds normally underneath regardless of this animation. */
+  .intro-anim { width: min(78vw, 320px); height: auto; overflow: visible; }
+  .intro-entry-line, .intro-check-line {
+    fill: none; stroke: var(--brass); stroke-width: 10;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .intro-entry-line {
+    stroke-dasharray: 360; stroke-dashoffset: 360;
+    animation: introEntryDraw 500ms ease-out forwards;
+  }
+  .intro-check-line {
+    stroke-dasharray: 220; stroke-dashoffset: 220;
+    animation: introCheckDraw 420ms ease-in-out forwards;
+    animation-delay: 480ms;
+  }
+  .intro-notebook {
+    transform-box: fill-box; transform-origin: 50% 50%;
+    animation: introNotebookBounce 260ms ease-out forwards;
+    animation-delay: 880ms;
+  }
+  .intro-notebook rect { fill: var(--paper); stroke: rgba(0,0,0,0.15); stroke-width: 2; }
+  .intro-coil { fill: none; stroke: var(--ink-soft); stroke-width: 2.5; }
+  .intro-t { fill: none; stroke: var(--bg); stroke-width: 14; stroke-linecap: square; }
+
+  @keyframes introEntryDraw { to { stroke-dashoffset: 0; } }
+  @keyframes introCheckDraw { to { stroke-dashoffset: 0; } }
+  @keyframes introNotebookBounce {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.1); }
+    60% { transform: scale(0.96); }
+    100% { transform: scale(1); }
+  }
   .mono { font-family: 'Space Mono', monospace; }
   .ticket-wrap { max-width: 420px; margin: 0 auto; }
 
@@ -474,7 +511,23 @@
 </style>
 </head>
 <body>
-<div id="app-loading"><span>Loading&hellip;</span></div>
+<div id="app-loading">
+  <svg class="intro-anim" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+    <path class="intro-entry-line" d="M 400 100 Q 260 130 130 175" />
+    <g class="intro-notebook">
+      <rect x="140" y="95" width="120" height="135" rx="10" />
+      <circle class="intro-coil" cx="151" cy="95" r="4" />
+      <circle class="intro-coil" cx="169" cy="95" r="4" />
+      <circle class="intro-coil" cx="187" cy="95" r="4" />
+      <circle class="intro-coil" cx="205" cy="95" r="4" />
+      <circle class="intro-coil" cx="223" cy="95" r="4" />
+      <circle class="intro-coil" cx="241" cy="95" r="4" />
+      <circle class="intro-coil" cx="249" cy="95" r="4" />
+      <path class="intro-t" d="M 175 138 h 42 M 196 138 v 56" />
+    </g>
+    <path class="intro-check-line" d="M 130 175 L 160 205 L 250 120" />
+  </svg>
+</div>
 <div id="login-screen" style="display:none;">
   <div class="login-card">
     <button class="login-dismiss" id="loginDismissBtn" aria-label="Close">&times;</button>
@@ -748,7 +801,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-i';
+  const APP_VERSION = '2026-09-11-j';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -1026,9 +1079,28 @@
     }
   }, 0);
 
-  function hideAppLoading() {
+  // The intro animation plays on a fixed timeline independent of the real
+  // session-check/data-loading work (which proceeds normally underneath,
+  // completely unblocked by any of this). The loading screen is only
+  // actually removed once BOTH the animation has finished its own fixed
+  // duration AND the real load has separately signaled it's done via
+  // hideAppLoading() - whichever finishes later. This is what makes the
+  // handoff graceful regardless of how fast or slow the real check is:
+  // a fast check waits for the animation to finish before revealing
+  // content; a slow check just means the loading screen (settled, at the
+  // end of its animation) stays a little longer, exactly as before.
+  let introAnimDone = false;
+  let realLoadDone = false;
+  const INTRO_ANIM_MS = 1150; // must match the animation choreography in the CSS below
+  function finishAppLoading() {
+    if (!introAnimDone || !realLoadDone) return;
     const el = $('app-loading');
     if (el) el.style.display = 'none';
+  }
+  setTimeout(() => { introAnimDone = true; finishAppLoading(); }, INTRO_ANIM_MS);
+  function hideAppLoading() {
+    realLoadDone = true;
+    finishAppLoading();
   }
   window.hideAppLoading = hideAppLoading;
   const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
