@@ -46,7 +46,10 @@
   #app-loading {
     position: fixed; inset: 0; z-index: 1300;
     display: flex; align-items: center; justify-content: center;
-    background: var(--bg); color: var(--paper);
+    /* Extracted directly from icon-512.png's own corner pixels (a
+       diagonal gradient, not flat): #225137 top-left -> #0a3720
+       bottom-right. Only for the duration of this loading screen. */
+    background: linear-gradient(135deg, #225137, #0a3720); color: var(--paper);
     font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
   }
 
@@ -56,46 +59,48 @@
      completely independent of the real session-check/data-loading work,
      which proceeds normally underneath regardless of this animation.
 
-     Uses the real icon-512.png for the end result (rather than an
-     approximated hand-drawn notebook) so it's pixel-identical to the
-     actual logo. The image is masked so just its checkmark region starts
-     hidden; a small blocky "bolt" flies in from off-screen right, arcs
-     behind the logo, then travels the checkmark's own two-stroke path
-     (short down-right, long up-right) via CSS motion-path - timed so the
-     mask reveal (stroke-dashoffset, same drawing technique, but cutting
-     a hole open rather than adding a stroke) uncovers the real checkmark
-     pixels in sync with the bolt passing over them. The bolt itself
-     shrinks/fades to nothing over the same span, so nothing hand-drawn
-     is left on screen - the checkmark that ends up visible is the actual
-     image, not a separate shape. */
+     Combines the two prior approaches: a single fluid stroke (drawn via
+     stroke-dasharray/dashoffset, not a moving block) flies in from
+     off-screen right and arcs behind the real icon-512.png logo, exactly
+     like the first version's motion - but its path/thickness/color were
+     extracted directly from the actual image's checkmark (see analysis
+     in the commit message), and once the stroke reaches the checkmark's
+     real position, an SVG mask reveal (same dasharray technique, cutting
+     a hole open instead of adding a stroke) uncovers the genuine
+     checkmark pixels in sync with the stroke tracing that exact path -
+     so the drawn line and the real logo become the same thing, matching
+     the second version's fidelity. The hand-drawn ENTRY portion (the
+     part with no real counterpart in the image) fades out completely
+     right as the reveal finishes, fixing the first version's leftover-
+     trail problem - only the real, permanent logo checkmark remains. */
   .intro-anim { width: min(92vw, 520px); height: auto; overflow: visible; }
+  .intro-entry-stroke {
+    fill: none; stroke: var(--brass); stroke-width: 28;
+    stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 480; stroke-dashoffset: 480;
+    animation: introEntryDraw 500ms ease-out forwards,
+               introEntryFade 180ms ease-in forwards;
+    animation-delay: 0ms, 860ms;
+  }
+  .intro-mask-cover {
+    /* Width extracted from the real checkmark (~26px average, measured
+       perpendicular to its long stroke) plus margin so the anti-aliased
+       edges of the real artwork are fully covered/revealed cleanly. */
+    fill: none; stroke: #000; stroke-width: 40;
+    stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 280; stroke-dashoffset: 0;
+    animation: introCheckReveal 380ms ease-in-out forwards;
+    animation-delay: 480ms;
+  }
   .intro-logo {
     transform-box: fill-box; transform-origin: 50% 50%;
     animation: introLogoBounce 260ms ease-out forwards;
-    animation-delay: 850ms;
-  }
-  .intro-mask-cover {
-    fill: none; stroke: #000; stroke-width: 58;
-    stroke-linecap: round; stroke-linejoin: round;
-    stroke-dasharray: 300; stroke-dashoffset: 0;
-    animation: introCheckReveal 340ms ease-in-out forwards;
-    animation-delay: 510ms;
-  }
-  .intro-bolt {
-    fill: var(--brass);
-    offset-path: path('M 760 120 Q 560 150 324 258 L 377 333 L 480 180');
-    offset-rotate: auto;
-    offset-distance: 0%;
-    animation: introBoltMove 850ms linear forwards, introBoltFade 850ms ease-in forwards;
+    animation-delay: 860ms;
   }
 
-  @keyframes introCheckReveal { to { stroke-dashoffset: 300; } }
-  @keyframes introBoltMove { to { offset-distance: 100%; } }
-  @keyframes introBoltFade {
-    0% { opacity: 1; transform: scale(1); }
-    65% { opacity: 1; transform: scale(1); }
-    100% { opacity: 0; transform: scale(0.2); }
-  }
+  @keyframes introEntryDraw { to { stroke-dashoffset: 0; } }
+  @keyframes introEntryFade { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes introCheckReveal { to { stroke-dashoffset: 280; } }
   @keyframes introLogoBounce {
     0% { transform: scale(1); }
     35% { transform: scale(1.08); }
@@ -530,12 +535,16 @@
 <div id="app-loading">
   <svg class="intro-anim" viewBox="0 0 760 512" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
     <defs>
+      <!-- Checkmark points (339,255)-(374,330)-(468,187) are the real
+           icon-512.png's actual checkmark centerline (extracted by
+           pixel analysis, +124 for this viewBox's image offset), not an
+           approximation. -->
       <mask id="introCheckMask" maskUnits="userSpaceOnUse" x="0" y="0" width="760" height="512">
         <rect x="0" y="0" width="760" height="512" fill="#fff" />
-        <path class="intro-mask-cover" d="M 324 258 L 377 333 L 480 180" />
+        <path class="intro-mask-cover" d="M 339 255 L 374 330 L 468 187" />
       </mask>
     </defs>
-    <rect class="intro-bolt" x="-27" y="-21" width="54" height="42" rx="8" />
+    <path class="intro-entry-stroke" d="M 760 130 Q 560 160 339 255" />
     <image class="intro-logo" href="icon-512.png" x="124" y="0" width="512" height="512" mask="url(#introCheckMask)" />
   </svg>
 </div>
@@ -812,7 +821,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-k';
+  const APP_VERSION = '2026-09-11-l';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
