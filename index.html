@@ -208,7 +208,12 @@
   }
 
   .history-empty { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); background: var(--paper-2); padding: 14px; border-radius: 3px; text-align: center; }
-  .copy { background: var(--paper); border-radius: 2px; padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .copy { position: relative; background: var(--paper); border-radius: 2px; padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .copy .shift-type-tag {
+    position: absolute; bottom: 4px; right: 8px;
+    font-family: 'Space Mono', monospace; font-size: 8.5px; letter-spacing: 0.05em;
+    color: var(--ink-soft); opacity: 0.65; text-transform: uppercase;
+  }
   .copy .meta { flex: 1 1 auto; min-width: 0; }
   .copy .amtwrap { flex: 0 0 auto; }
   .copy .meta { font-size: 12px; }
@@ -836,7 +841,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-o';
+  const APP_VERSION = '2026-09-11-p';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -1861,6 +1866,7 @@
           <div class="cash">${subLine}</div>
         </div>
         <button class="edit-btn" data-edit="${e.id}">edit</button>
+        ${e.shiftType ? `<span class="shift-type-tag">${e.shiftType}</span>` : ''}
       </div>`;
     }).join('');
 
@@ -2133,7 +2139,17 @@
     if (customStart && customEnd) renderStats();
   });
   document.querySelectorAll('#shiftTypeFilterRow input[type=checkbox]').forEach(cb => {
-    cb.addEventListener('change', () => {
+    cb.addEventListener('change', (ev) => {
+      // Pro-gated: no real Pro status yet, so this behaves the same for
+      // everyone - always revert an uncheck attempt and point at the
+      // upgrade message. shiftTypeFilters/renderStats() below are left
+      // wired up so real filtering just starts working the moment an
+      // actual Pro check replaces this always-revert.
+      if (!ev.target.checked) {
+        ev.target.checked = true;
+        alert('Filtering by shift type is a Pro feature — upgrade to Pro to unlock');
+        return;
+      }
       shiftTypeFilters = new Set(
         [...document.querySelectorAll('#shiftTypeFilterRow input[type=checkbox]:checked')].map(c => c.value)
       );
