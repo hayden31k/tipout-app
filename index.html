@@ -345,6 +345,7 @@
   .stat-card { background: var(--paper-2); border-radius: 3px; padding: 12px 14px; }
   .stat-card .label { font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.05em; color: var(--ink-soft); text-transform: uppercase; }
   .stat-card .value { font-family: 'Space Mono', monospace; font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .stat-card .value.locked { font-size: 12px; font-weight: 600; color: var(--ink-soft); opacity: 0.8; }
 
   .day-row { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
   .day-row .day-label { width: 34px; font-family: 'Space Mono', monospace; font-size: 11.5px; color: var(--ink-soft); }
@@ -2911,6 +2912,11 @@
     const totalWagesEarned = wageEligible.reduce((s, e) => s + e.hoursWorked * hourlyWage, 0);
     const netPay = totalWagesEarned + totalTakehome;
     const hourlyRateWithTips = (hasWageData && totalHoursWorked > 0) ? (netPay / totalHoursWorked) : null;
+    // Pro-gated: the box titles always show, but the computed dollar values
+    // are only for Pro - locked out, this shows an upgrade message instead,
+    // regardless of whether there's any qualifying shift data to show.
+    const wageBoxesLocked = !isProUnlocked();
+    const lockedValueHtml = '&#128274; Upgrade to Pro';
 
     const byDay = Array.from({length: 7}, () => ({ sales: 0, count: 0 }));
     inRange.forEach(e => {
@@ -2929,8 +2935,8 @@
         <div class="stat-card"><div class="label">Avg tips / shift</div><div class="value">${fmt(avgTakehome)}</div></div>
         <div class="stat-card"><div class="label">Gross tip %</div><div class="value">${grossTipPct !== null ? grossTipPct.toFixed(1) + '%' : '—'}</div></div>
         <div class="stat-card"><div class="label">Net tip % (after tipout)</div><div class="value">${netTipPct !== null ? netTipPct.toFixed(1) + '%' : '—'}</div></div>
-        <div class="stat-card"><div class="label">Net pay (wages + tips)</div><div class="value">${hasWageData ? fmt(netPay) : '—'}</div></div>
-        <div class="stat-card"><div class="label">Hourly rate w/ tips</div><div class="value">${hourlyRateWithTips !== null ? fmt(hourlyRateWithTips) : '—'}</div></div>
+        <div class="stat-card"><div class="label">Net pay (wages + tips)</div><div class="value${wageBoxesLocked ? ' locked' : ''}">${wageBoxesLocked ? lockedValueHtml : (hasWageData ? fmt(netPay) : '—')}</div></div>
+        <div class="stat-card"><div class="label">Hourly rate w/ tips</div><div class="value${wageBoxesLocked ? ' locked' : ''}">${wageBoxesLocked ? lockedValueHtml : (hourlyRateWithTips !== null ? fmt(hourlyRateWithTips) : '—')}</div></div>
       </div>
       <div class="stats-section-title">Avg sales by day worked</div>
       ${dayAverages.map(d => `
