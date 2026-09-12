@@ -1264,13 +1264,15 @@
     const opts = { weekday: 'short', month: 'short', day: 'numeric' };
     return new Date(start).toLocaleDateString(undefined, opts) + ' – ' + new Date(end).toLocaleDateString(undefined, opts);
   }
-  function sumTotalTips(list) {
-    return list.reduce((sum, e) => {
-      const hasCash = typeof e.cashTips === 'number' && !isNaN(e.cashTips);
-      const cashAmt = hasCash ? e.cashTips : 0;
-      const owedAmt = e.net < 0 ? Math.abs(e.net) : 0;
-      return sum + cashAmt + owedAmt;
-    }, 0);
+  // Envelope amounts represent money still coming FROM the restaurant, so
+  // this must only ever sum the owed portion (net < 0) - cash already
+  // collected in hand was never something the restaurant was going to pay
+  // out later, and including it here would overstate what's left in the
+  // envelope. Contrast with the per-shift card's "Total tips" figure
+  // (renderHistory below), which deliberately includes both and is a
+  // different, correct concept: total earned, not amount still owed.
+  function sumOwedAmount(list) {
+    return list.reduce((sum, e) => sum + (e.net < 0 ? Math.abs(e.net) : 0), 0);
   }
   const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, tipoutMode: 'split', displayName: '' };
   const ACTIVE_RESTAURANT_KEY = 'tipout-active-restaurant-id';
@@ -2004,7 +2006,7 @@
     const currentEntries = groups.has(current.start) ? groups.get(current.start).entries : [];
     const currentAllReceived = currentEntries.length > 0 && currentEntries.every(e => e.net >= 0 || e.received);
     $('envelopeCurrentTitle').textContent = 'Your tip envelope: ' + formatPeriodRange(current.start, current.end);
-    $('envelopeCurrentAmt').textContent = fmt(sumTotalTips(currentEntries));
+    $('envelopeCurrentAmt').textContent = fmt(sumOwedAmount(currentEntries));
     const currentBox = $('envelopeCurrentCheckbox');
     currentBox.checked = currentAllReceived;
     currentBox.dataset.start = current.start;
@@ -2025,7 +2027,7 @@
       $('recentEnvelopesList').innerHTML = pastPending.map(g => `
         <div class="envelope-card">
           <div class="envelope-title">${formatPeriodRange(g.start, g.end)}</div>
-          <div class="envelope-amt">${fmt(sumTotalTips(g.entries))}</div>
+          <div class="envelope-amt">${fmt(sumOwedAmount(g.entries))}</div>
           <div class="receive-row">
             <input type="checkbox" id="envRecv-${g.start}" data-start="${g.start}" data-end="${g.end}" />
             <label for="envRecv-${g.start}">I received this envelope</label>
