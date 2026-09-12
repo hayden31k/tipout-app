@@ -211,7 +211,7 @@
   }
 
   .history-empty { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); background: var(--paper-2); padding: 14px; border-radius: 3px; text-align: center; }
-  .copy { position: relative; background: var(--paper); border-radius: 2px; padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .copy { position: relative; background: var(--paper); border-radius: 2px; padding: 30px 14px 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .copy .shift-type-tag {
     position: absolute; bottom: 4px; right: 8px;
     font-family: 'Space Mono', monospace; font-size: 8.5px; letter-spacing: 0.05em;
@@ -221,17 +221,19 @@
   .copy .amtwrap { flex: 0 0 auto; }
   .copy .meta { font-size: 12px; }
   .copy .meta .date { font-weight: 600; }
-  .copy .meta .sub { color: var(--ink-soft); font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: -0.01em; word-break: break-word; }
-  .copy .meta .pct-line { margin-top: 2px; opacity: 0.85; font-size: 9.5px; }
+  .copy .meta .sub, .copy .amtwrap .sub { color: var(--ink-soft); font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: -0.01em; word-break: break-word; }
+  .copy .meta .pct-line, .copy .amtwrap .pct-line { margin-top: 2px; opacity: 0.85; font-size: 9.5px; }
   .copy .amtwrap { text-align: right; }
   .copy .amt { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 16px; }
   .copy .amt.owe { color: var(--owe); }
   .copy .amt.get { color: var(--get); }
   .copy .cash { font-family: 'Space Mono', monospace; font-size: 10.5px; color: var(--ink-soft); }
   .copy .edit-btn {
+    position: absolute; top: 8px; right: 8px;
+    display: flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; padding: 0;
     background: none; border: 1.3px solid var(--ink-soft); color: var(--ink-soft);
-    font-family: 'Space Mono', monospace; font-size: 10px; border-radius: 3px;
-    padding: 3px 8px; cursor: pointer; margin-left: 10px;
+    font-size: 12px; line-height: 1; border-radius: 50%; cursor: pointer;
   }
   .copy.received { opacity: 0.55; }
   .receive-row { display: flex; align-items: center; gap: 5px; margin-top: 4px; }
@@ -2396,6 +2398,12 @@
       const grossPct = totalSales > 0 ? (grossTips / totalSales * 100) : null;
       const netPct = totalSales > 0 ? (totalTips / totalSales * 100) : null;
 
+      const hourlyWage = settings.hourlyWage;
+      const hasWageLines = typeof e.hoursWorked === 'number' && !isNaN(e.hoursWorked) && e.hoursWorked > 0
+        && typeof hourlyWage === 'number' && !isNaN(hourlyWage);
+      const shiftNetPay = hasWageLines ? (e.hoursWorked * hourlyWage) + totalTips : null;
+      const shiftHourlyRate = hasWageLines ? (shiftNetPay / e.hoursWorked) : null;
+
       let subLine;
       if (e.net < 0) {
         subLine = `restaurant owes you ${fmt(owedAmt)}`;
@@ -2424,8 +2432,11 @@
         <div class="amtwrap">
           <div class="amt get">${fmt(totalTips)}</div>
           <div class="cash">${subLine}</div>
+          ${hasWageLines ? `
+          <div class="sub pct-line">Net pay (wages + tips) &middot; ${fmt(shiftNetPay)}</div>
+          <div class="sub pct-line">Hourly rate w/ tips &middot; ${fmt(shiftHourlyRate)}</div>` : ''}
         </div>
-        <button class="edit-btn" data-edit="${e.id}">edit</button>
+        <button class="edit-btn" data-edit="${e.id}" aria-label="Edit shift">&#9998;</button>
         ${e.shiftType ? `<span class="shift-type-tag">${e.shiftType}</span>` : ''}
       </div>`;
     }).join('');
@@ -2473,6 +2484,7 @@
         <button type="button" class="sign-btn ${editPosSign === -1 ? 'active' : ''}" id="ed-sign-neg">Negative</button>
       </div>
       <div class="field-row"><label>Cash left with</label><input type="number" id="ed-cash" value="${typeof e.cashTips === 'number' ? e.cashTips : ''}" /></div>
+      <div class="field-row"><label>Hours worked</label><input type="number" id="ed-hours" value="${typeof e.hoursWorked === 'number' ? e.hoursWorked : ''}" /></div>
       <div class="edit-row-btns">
         <button class="cancel" id="ed-cancel">Cancel</button>
         <button class="delete" id="ed-delete">Delete</button>
@@ -2530,6 +2542,8 @@
       const cashVal = $('ed-cash').value;
       entry.cashTips = cashVal === '' ? undefined : parseFloat(cashVal) || 0;
       if (entry.cashTips === undefined) delete entry.takeHome;
+      const hoursVal = $('ed-hours').value;
+      entry.hoursWorked = hoursVal === '' ? undefined : parseFloat(hoursVal) || 0;
       recompute(entry);
       editingId = null;
       renderHistory();
