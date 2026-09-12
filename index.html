@@ -714,6 +714,8 @@
     <input type="number" id="restaurantPanelTipPct" step="0.1" inputmode="decimal" />
     <div class="info-note" id="restaurantPanelChargeTipInfoNote" style="display:none;">The charge tip % covers the fee your restaurant is charged by their card payment processor on credit/debit tips — some restaurants pass this cost to servers, others don't. If your restaurant doesn't charge you for this, set it to 0%.</div>
     <div class="info-note-static">These percentages don't add together — each applies separately to its own sales category, not combined.</div>
+    <label for="restaurantPanelHourlyWage">Hourly wage (before tips) &mdash; optional</label>
+    <input type="number" id="restaurantPanelHourlyWage" step="0.01" inputmode="decimal" placeholder="0.00" />
     <div class="mode-toggle-label">How often are tips paid out?</div>
     <label for="restaurantPanelCadence">Payout schedule</label>
     <select id="restaurantPanelCadence">
@@ -900,6 +902,10 @@
             <div class="field-row">
               <label>Cash you left with?<span class="hint">what's actually in your pocket &mdash; optional</span></label>
               <input type="number" inputmode="decimal" id="cashTips" placeholder="0.00" />
+            </div>
+            <div class="field-row">
+              <label>Hours worked<span class="hint">optional</span></label>
+              <input type="number" inputmode="decimal" id="hoursWorked" placeholder="0.0" />
             </div>
             <div class="takehome" id="takehomeBlock">
               $0.00
@@ -1333,7 +1339,7 @@
   function sumOwedAmount(list) {
     return list.reduce((sum, e) => sum + (e.net < 0 ? Math.abs(e.net) : 0), 0);
   }
-  const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, tipoutMode: 'split', displayName: '' };
+  const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, tipoutMode: 'split', displayName: '', hourlyWage: null };
   const ACTIVE_RESTAURANT_KEY = 'tipout-active-restaurant-id';
   const DEFAULT_BG_COLOR = '#16211B';
   const SECOND_RESTAURANT_BG_COLOR = '#B8D4E3';
@@ -1394,6 +1400,7 @@
       net: e.net,
       cash_tips: (typeof e.cashTips === 'number' && !isNaN(e.cashTips)) ? e.cashTips : null,
       take_home: (typeof e.takeHome === 'number' && !isNaN(e.takeHome)) ? e.takeHome : null,
+      hours_worked: (typeof e.hoursWorked === 'number' && !isNaN(e.hoursWorked)) ? e.hoursWorked : null,
       received: !!e.received,
     };
     if (restaurantId) row.restaurant_id = restaurantId;
@@ -1414,6 +1421,7 @@
     };
     if (r.cash_tips !== null && r.cash_tips !== undefined) e.cashTips = r.cash_tips;
     if (r.take_home !== null && r.take_home !== undefined) e.takeHome = r.take_home;
+    if (r.hours_worked !== null && r.hours_worked !== undefined) e.hoursWorked = r.hours_worked;
     if (r.shift_type !== null && r.shift_type !== undefined) e.shiftType = r.shift_type;
     return e;
   }
@@ -1472,8 +1480,9 @@
     const barPct = restaurant ? restaurant.bar_pct : (localBlob ? localBlob.barPct : DEFAULT_SETTINGS.barPct);
     const tipPct = restaurant ? restaurant.tip_pct : (localBlob ? localBlob.tipPct : DEFAULT_SETTINGS.tipPct);
     const tipoutMode = restaurant ? (restaurant.tipout_mode || 'split') : (localBlob ? (localBlob.tipoutMode || 'split') : DEFAULT_SETTINGS.tipoutMode);
+    const hourlyWage = restaurant ? restaurant.hourly_wage : (localBlob ? localBlob.hourlyWage : DEFAULT_SETTINGS.hourlyWage);
 
-    settings = { foodPct, barPct, tipPct, tipoutMode, displayName, isPro };
+    settings = { foodPct, barPct, tipPct, tipoutMode, displayName, isPro, hourlyWage };
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
@@ -1512,6 +1521,7 @@
       tipPct: parseFloat($('tipPct').value) || 0,
       tipoutMode: settings.tipoutMode || 'split',
       displayName: $('menuDisplayName').value.trim(),
+      hourlyWage: settings.hourlyWage,
     };
     await persistPercentages();
     await persistDisplayName();
@@ -1601,7 +1611,7 @@
   async function activateRestaurant(restaurant) {
     activeRestaurantId = restaurant.id;
     try { localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId); } catch (e) {}
-    settings = { ...settings, foodPct: restaurant.food_pct, barPct: restaurant.bar_pct, tipPct: restaurant.tip_pct, tipoutMode: restaurant.tipout_mode || 'split' };
+    settings = { ...settings, foodPct: restaurant.food_pct, barPct: restaurant.bar_pct, tipPct: restaurant.tip_pct, tipoutMode: restaurant.tipout_mode || 'split', hourlyWage: restaurant.hourly_wage };
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
@@ -1711,6 +1721,7 @@
     $('restaurantPanelBarPct').value = r.bar_pct;
     $('restaurantPanelCombinedPct').value = r.food_pct;
     $('restaurantPanelTipPct').value = r.tip_pct;
+    $('restaurantPanelHourlyWage').value = (r.hourly_wage !== null && r.hourly_wage !== undefined) ? r.hourly_wage : '';
     restaurantPanelMode = r.tipout_mode || 'split';
     updateRestaurantPanelModeUi();
     $('restaurantPanelCadence').value = r.payout_cadence || 'weekly';
@@ -1729,6 +1740,7 @@
     $('restaurantPanelBarPct').value = DEFAULT_SETTINGS.barPct;
     $('restaurantPanelCombinedPct').value = DEFAULT_SETTINGS.foodPct;
     $('restaurantPanelTipPct').value = DEFAULT_SETTINGS.tipPct;
+    $('restaurantPanelHourlyWage').value = '';
     restaurantPanelMode = 'split';
     updateRestaurantPanelModeUi();
     $('restaurantPanelCadence').value = 'weekly';
@@ -1807,6 +1819,8 @@
     const foodPct = parseFloat((combined ? $('restaurantPanelCombinedPct') : $('restaurantPanelFoodPct')).value) || 0;
     const barPct = parseFloat($('restaurantPanelBarPct').value) || 0;
     const tipPct = parseFloat($('restaurantPanelTipPct').value) || 0;
+    const hourlyWageVal = $('restaurantPanelHourlyWage').value;
+    const hourlyWage = hourlyWageVal === '' ? null : (parseFloat(hourlyWageVal) || 0);
     if (!name) {
       $('restaurantPanelStatus').textContent = 'Restaurant name is required.';
       return;
@@ -1829,7 +1843,7 @@
         .insert({
           user_id: currentUser.id, name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct,
           tipout_mode: restaurantPanelMode, payout_cadence: payoutCadence, payout_start_day: payoutStartDay,
-          bg_color: SECOND_RESTAURANT_BG_COLOR,
+          bg_color: SECOND_RESTAURANT_BG_COLOR, hourly_wage: hourlyWage,
         })
         .select()
         .single();
@@ -1842,7 +1856,7 @@
       restaurants = [...restaurants, created];
       activeRestaurantId = created.id;
       try { localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId); } catch (e) {}
-      settings = { ...settings, foodPct: created.food_pct, barPct: created.bar_pct, tipPct: created.tip_pct, tipoutMode: created.tipout_mode || 'split' };
+      settings = { ...settings, foodPct: created.food_pct, barPct: created.bar_pct, tipPct: created.tip_pct, tipoutMode: created.tipout_mode || 'split', hourlyWage: created.hourly_wage };
       $('foodPct').value = settings.foodPct;
       $('barPct').value = settings.barPct;
       $('tipPct').value = settings.tipPct;
@@ -1868,13 +1882,14 @@
     const data = await updateActiveRestaurant({
       name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, tipout_mode: restaurantPanelMode,
       payout_cadence: payoutCadence, payout_start_day: payoutStartDay, payout_anchor_date: payoutAnchorDate,
+      hourly_wage: hourlyWage,
     });
     btn.disabled = false;
     if (!data) {
       $('restaurantPanelStatus').textContent = 'Something went wrong. Please try again.';
       return;
     }
-    settings = { ...settings, foodPct: data.food_pct, barPct: data.bar_pct, tipPct: data.tip_pct, tipoutMode: data.tipout_mode || 'split' };
+    settings = { ...settings, foodPct: data.food_pct, barPct: data.bar_pct, tipPct: data.tip_pct, tipoutMode: data.tipout_mode || 'split', hourlyWage: data.hourly_wage };
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
@@ -2539,6 +2554,15 @@
     th.childNodes[0].nodeValue = fmt(cashLeft);
   }
 
+  function updateHoursWorked() {
+    if (!lastCalc) return;
+    const hoursVal = $('hoursWorked').value;
+    if (hoursVal === '') { delete lastCalc.hoursWorked; return; }
+    const hours = parseFloat(hoursVal);
+    if (isNaN(hours)) delete lastCalc.hoursWorked;
+    else lastCalc.hoursWorked = hours;
+  }
+
   function calculate() {
     const combined = settings.tipoutMode === 'combined';
     // In combined mode, the single "total sales" field stands in for
@@ -2570,6 +2594,7 @@
     `;
     $('resultBlock').style.display = 'block';
     $('cashTips').value = '';
+    $('hoursWorked').value = '';
     $('takehomeBlock').style.display = 'none';
   }
 
@@ -2581,6 +2606,7 @@
 
   $('calcBtn').addEventListener('click', calculate);
   $('cashTips').addEventListener('input', updateTakehome);
+  $('hoursWorked').addEventListener('input', updateHoursWorked);
 
   $('posSignPos').addEventListener('click', () => {
     posSign = 1;
@@ -2614,7 +2640,7 @@
   });
 
   $('clearBtn').addEventListener('click', () => {
-    ['foodSales','barSales','totalSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
+    ['foodSales','barSales','totalSales','chargeTips','posCalc','cashTips','hoursWorked'].forEach(id => $(id).value = '');
     $('resultBlock').style.display = 'none';
     lastCalc = null;
     posSign = 1;
@@ -2628,7 +2654,7 @@
     if (!lastCalc) return;
     entries.push(lastCalc);
     renderHistory();
-    ['foodSales','barSales','totalSales','chargeTips','posCalc','cashTips'].forEach(id => $(id).value = '');
+    ['foodSales','barSales','totalSales','chargeTips','posCalc','cashTips','hoursWorked'].forEach(id => $(id).value = '');
     $('resultBlock').style.display = 'none';
     lastCalc = null;
     posSign = 1;
@@ -2736,6 +2762,18 @@
     const grossTipPct = totalSales > 0 ? (totalGrossTips / totalSales * 100) : null;
     const netTipPct = totalSales > 0 ? (totalTakehome / totalSales * 100) : null;
 
+    // Wages/net pay: only shifts with hoursWorked set contribute to the
+    // wage total or the hours denominator - an unset restaurant hourly_wage
+    // just means $0/hr of wages, not a missing-data state (that's what
+    // hoursWorked being unset represents, via hasWageData below).
+    const wageEligible = inRange.filter(e => typeof e.hoursWorked === 'number' && !isNaN(e.hoursWorked));
+    const hasWageData = wageEligible.length > 0;
+    const hourlyWage = (typeof settings.hourlyWage === 'number' && !isNaN(settings.hourlyWage)) ? settings.hourlyWage : 0;
+    const totalHoursWorked = wageEligible.reduce((s, e) => s + e.hoursWorked, 0);
+    const totalWagesEarned = wageEligible.reduce((s, e) => s + e.hoursWorked * hourlyWage, 0);
+    const netPay = totalWagesEarned + totalTakehome;
+    const hourlyRateWithTips = (hasWageData && totalHoursWorked > 0) ? (netPay / totalHoursWorked) : null;
+
     const byDay = Array.from({length: 7}, () => ({ sales: 0, count: 0 }));
     inRange.forEach(e => {
       const dow = new Date(e.ts).getDay();
@@ -2746,13 +2784,15 @@
     const maxAvg = Math.max(1, ...dayAverages.map(d => d.avg));
 
     el.innerHTML = `
-      <div class="stat-grid stat-grid-6">
+      <div class="stat-grid stat-grid-8">
         <div class="stat-card"><div class="label">Total sales</div><div class="value">${fmt(totalSales)}</div></div>
         <div class="stat-card"><div class="label">Avg sales / shift</div><div class="value">${fmt(avgSales)}</div></div>
         <div class="stat-card"><div class="label">Total tips</div><div class="value">${fmt(totalTakehome)}</div></div>
         <div class="stat-card"><div class="label">Avg tips / shift</div><div class="value">${fmt(avgTakehome)}</div></div>
         <div class="stat-card"><div class="label">Gross tip %</div><div class="value">${grossTipPct !== null ? grossTipPct.toFixed(1) + '%' : '—'}</div></div>
         <div class="stat-card"><div class="label">Net tip % (after tipout)</div><div class="value">${netTipPct !== null ? netTipPct.toFixed(1) + '%' : '—'}</div></div>
+        <div class="stat-card"><div class="label">Net pay (wages + tips)</div><div class="value">${hasWageData ? fmt(netPay) : '—'}</div></div>
+        <div class="stat-card"><div class="label">Hourly rate w/ tips</div><div class="value">${hourlyRateWithTips !== null ? fmt(hourlyRateWithTips) : '—'}</div></div>
       </div>
       <div class="stats-section-title">Avg sales by day worked</div>
       ${dayAverages.map(d => `
