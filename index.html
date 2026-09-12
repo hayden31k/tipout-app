@@ -27,6 +27,9 @@
     --get: #7A6A2E;
     --brass: #B08D57;
     --rule: #C9BE9E;
+    /* Overridden per-restaurant based on --bg's relative luminance (see
+       applyRestaurantTheme) - --paper is correct for the default dark green. */
+    --header-text: var(--paper);
   }
 
   #tipout-root {
@@ -99,7 +102,7 @@
   .mono { font-family: 'Space Mono', monospace; }
   .ticket-wrap { max-width: 420px; margin: 0 auto; }
 
-  .masthead { text-align: center; color: var(--paper); margin-bottom: 18px; position: relative; }
+  .masthead { text-align: center; color: var(--header-text); margin-bottom: 18px; position: relative; }
   .masthead h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: 0.01em; margin: 0 0 4px; }
   .masthead p { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--brass); margin: 0; }
 
@@ -358,7 +361,7 @@
 
   .greeting-line {
     text-align: center; font-family: 'Space Mono', monospace; font-size: 12px;
-    color: var(--paper); opacity: 0.85; margin: 0 0 10px;
+    color: var(--header-text); opacity: 0.85; margin: 0 0 10px;
   }
 
   .menu-overlay {
@@ -507,6 +510,7 @@
   #restaurant-panel * { box-sizing: border-box; }
   #restaurant-panel .panel-card {
     position: relative; background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 360px; width: 100%;
+    max-height: calc(100vh - 48px); overflow-y: auto;
     box-shadow: 0 18px 40px rgba(0,0,0,0.35);
   }
   #restaurant-panel .panel-close {
@@ -537,6 +541,13 @@
     display: block; width: 100%; text-align: left; padding: 10px 4px; margin: 2px 0;
     background: none; border: none; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 13.5px; color: var(--ink); cursor: pointer;
   }
+  #restaurant-panel .color-swatch-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0 4px; }
+  #restaurant-panel .color-swatch {
+    width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--rule);
+    padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  #restaurant-panel .color-swatch.active { border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass); }
+  #restaurant-panel .color-swatch-check { font-size: 14px; font-weight: 700; line-height: 1; }
 
   /* Delete account overlay */
   #delete-account-screen {
@@ -724,6 +735,11 @@
     <div id="restaurantPanelAddAnotherWrap">
       <hr class="panel-sep" />
       <button class="panel-add-another" id="restaurantPanelAddAnother">Add another restaurant</button>
+    </div>
+    <div id="restaurantPanelColorWrap">
+      <hr class="panel-sep" />
+      <div class="mode-toggle-label">Choose your color</div>
+      <div class="color-swatch-row" id="restaurantPanelColorRow"></div>
     </div>
   </div>
 </div>
@@ -1207,6 +1223,7 @@
       hideOnboarding();
     }
     renderMastheadTitle();
+    applyRestaurantTheme(isSignedIn() ? getActiveRestaurant() : null);
     await loadEntries();
     updateMenuAuthView();
   }
@@ -1318,6 +1335,18 @@
   }
   const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, tipoutMode: 'split', displayName: '' };
   const ACTIVE_RESTAURANT_KEY = 'tipout-active-restaurant-id';
+  const DEFAULT_BG_COLOR = '#16211B';
+  const BG_COLOR_PRESETS = [
+    { name: 'Forest Green', hex: '#16211B' },
+    { name: 'Slate Gray', hex: '#2A2E33' },
+    { name: 'Midnight Navy', hex: '#101826' },
+    { name: 'Deep Plum', hex: '#241820' },
+    { name: 'Charcoal', hex: '#1C1C1C' },
+    { name: 'Espresso Brown', hex: '#221812' },
+    { name: 'Powder Blue', hex: '#B8D4E3' },
+    { name: 'Soft Red', hex: '#D9A398' },
+    { name: 'White', hex: '#F7F7F5' },
+  ];
   let settings = { ...DEFAULT_SETTINGS };
   let entries = [];
   let lastCalc = null;
@@ -1519,6 +1548,48 @@
     const r = isSignedIn() ? getActiveRestaurant() : null;
     $('mastheadTitle').textContent = r ? `Daily ${r.name} Tipout` : 'Daily Tipout';
   }
+
+  // ---- Per-restaurant background theme ----
+  function hexToRgb(hex) {
+    const clean = hex.replace('#', '');
+    const full = clean.length === 3 ? clean.split('').map(c => c + c).join('') : clean;
+    const n = parseInt(full, 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+  // WCAG relative luminance (the standard formula for "how bright does this
+  // color actually read as", not a naive average of the RGB channels) -
+  // generalizes to any hex color, so no preset needs its own light/dark flag.
+  function relativeLuminance(hex) {
+    const { r, g, b } = hexToRgb(hex);
+    const lin = (c) => {
+      const v = c / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  }
+  function isLightBackground(hex) {
+    return relativeLuminance(hex) > 0.5;
+  }
+  // Shifts every channel a fixed 3.5% toward white (dark backgrounds) or
+  // black (light backgrounds) - applied to the original default green this
+  // reproduces the original hardcoded --bg-2 almost exactly, and the same
+  // fixed shift generalizes sensibly to every other preset.
+  function deriveBg2(hex, isLight) {
+    const { r, g, b } = hexToRgb(hex);
+    const factor = 0.035;
+    const shift = (c) => isLight ? c * (1 - factor) : c + (255 - c) * factor;
+    const clamp = (c) => Math.min(255, Math.max(0, Math.round(c)));
+    return `rgb(${clamp(shift(r))}, ${clamp(shift(g))}, ${clamp(shift(b))})`;
+  }
+  function applyRestaurantTheme(restaurant) {
+    const bgColor = (restaurant && restaurant.bg_color) || DEFAULT_BG_COLOR;
+    const light = isLightBackground(bgColor);
+    const root = document.documentElement.style;
+    root.setProperty('--bg', bgColor);
+    root.setProperty('--bg-2', deriveBg2(bgColor, light));
+    root.setProperty('--header-text', light ? 'var(--ink)' : 'var(--paper)');
+  }
+
   // Makes `restaurant` the active one and reloads everything scoped to it -
   // the same sequence the "add another restaurant" flow already runs after
   // creating a new one, just triggered directly instead of after an insert.
@@ -1531,6 +1602,7 @@
     $('tipPct').value = settings.tipPct;
     updateTipoutModeUi();
     renderMastheadTitle();
+    applyRestaurantTheme(restaurant);
     await loadEntries();
     renderHistory();
     renderStats();
@@ -1580,6 +1652,46 @@
     $('restaurantPanelSplitPctRow').style.display = combined ? 'none' : '';
     $('restaurantPanelCombinedPctRow').style.display = combined ? '' : 'none';
   }
+  // Pro feature: swatches always render, but selecting one is gated - a
+  // locked user sees the picker and gets the upgrade message on tap,
+  // matching the pattern used for the other Pro gates.
+  function renderColorSwatches() {
+    const restaurant = getActiveRestaurant();
+    const current = (restaurant && restaurant.bg_color) || DEFAULT_BG_COLOR;
+    const row = $('restaurantPanelColorRow');
+    row.innerHTML = '';
+    BG_COLOR_PRESETS.forEach((preset) => {
+      const isActive = preset.hex.toLowerCase() === current.toLowerCase();
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'color-swatch' + (isActive ? ' active' : '');
+      btn.style.backgroundColor = preset.hex;
+      btn.title = preset.name;
+      btn.setAttribute('aria-label', preset.name);
+      if (isActive) {
+        const check = document.createElement('span');
+        check.className = 'color-swatch-check';
+        check.textContent = '✓';
+        check.style.color = isLightBackground(preset.hex) ? '#2B241A' : '#F0EAD6';
+        btn.appendChild(check);
+      }
+      btn.addEventListener('click', () => selectRestaurantBgColor(preset.hex));
+      row.appendChild(btn);
+    });
+  }
+  async function selectRestaurantBgColor(hex) {
+    if (!isProUnlocked()) {
+      alert('Custom colors are a Pro feature — upgrade to Pro to unlock');
+      return;
+    }
+    const data = await updateActiveRestaurant({ bg_color: hex });
+    if (!data) {
+      $('restaurantPanelStatus').textContent = 'Something went wrong. Please try again.';
+      return;
+    }
+    renderColorSwatches();
+    applyRestaurantTheme(data);
+  }
   function openRestaurantPanel() {
     const r = getActiveRestaurant();
     if (!r) return;
@@ -1587,6 +1699,8 @@
     $('restaurantPanelTitle').textContent = 'Current restaurant';
     $('restaurantPanelSaveBtn').textContent = 'Save changes';
     $('restaurantPanelAddAnotherWrap').style.display = 'block';
+    $('restaurantPanelColorWrap').style.display = 'block';
+    renderColorSwatches();
     $('restaurantPanelName').value = r.name;
     $('restaurantPanelFoodPct').value = r.food_pct;
     $('restaurantPanelBarPct').value = r.bar_pct;
@@ -1604,6 +1718,7 @@
     $('restaurantPanelTitle').textContent = 'Add restaurant';
     $('restaurantPanelSaveBtn').textContent = 'Add restaurant';
     $('restaurantPanelAddAnotherWrap').style.display = 'none';
+    $('restaurantPanelColorWrap').style.display = 'none';
     $('restaurantPanelName').value = '';
     $('restaurantPanelFoodPct').value = DEFAULT_SETTINGS.foodPct;
     $('restaurantPanelBarPct').value = DEFAULT_SETTINGS.barPct;
@@ -1721,6 +1836,7 @@
       $('tipPct').value = settings.tipPct;
       updateTipoutModeUi();
       renderMastheadTitle();
+      applyRestaurantTheme(created);
       closeRestaurantPanel();
       await loadEntries();
       renderHistory();
