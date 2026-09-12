@@ -2248,6 +2248,7 @@
     console.log('[tipout] wireEditCard() called - call #' + wireEditCardCallCount + ' (attaching listeners to a freshly-rendered edit card)');
     $('ed-cancel').addEventListener('click', () => { editingId = null; renderHistory(); });
     $('ed-delete').addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to delete this shift? This cannot be undone.')) return;
       entries = entries.filter(e => e.id !== editingId);
       editingId = null;
       renderHistory();
