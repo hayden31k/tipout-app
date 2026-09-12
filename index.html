@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="icon" href="icon-192.png" />
 <style>
-  html, body { margin: 0; padding: 0; background: #16211B; }
+  html, body { margin: 0; padding: 0; background: var(--bg); }
 
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Archivo:wght@500;600;700&display=swap');
 
@@ -1336,13 +1336,14 @@
   const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, tipoutMode: 'split', displayName: '' };
   const ACTIVE_RESTAURANT_KEY = 'tipout-active-restaurant-id';
   const DEFAULT_BG_COLOR = '#16211B';
+  const SECOND_RESTAURANT_BG_COLOR = '#B8D4E3';
   const BG_COLOR_PRESETS = [
     { name: 'Forest Green', hex: '#16211B' },
     { name: 'Slate Gray', hex: '#2A2E33' },
-    { name: 'Midnight Navy', hex: '#101826' },
-    { name: 'Deep Plum', hex: '#241820' },
-    { name: 'Charcoal', hex: '#1C1C1C' },
-    { name: 'Espresso Brown', hex: '#221812' },
+    { name: 'Midnight Navy', hex: '#1E3A56' },
+    { name: 'Deep Plum', hex: '#3D2836' },
+    { name: 'Storm Gray', hex: '#3A3D42' },
+    { name: 'Sandy Brown', hex: '#A9835C' },
     { name: 'Powder Blue', hex: '#B8D4E3' },
     { name: 'Soft Red', hex: '#D9A398' },
     { name: 'White', hex: '#F7F7F5' },
@@ -1813,11 +1814,18 @@
     $('restaurantPanelStatus').textContent = '';
 
     if (restaurantPanelAddMode) {
+      // This flow only ever creates a non-first restaurant (it's only
+      // reachable via "Add another restaurant", which requires at least one
+      // to already exist) - default it to Powder Blue rather than the
+      // column's own green default, so multiple restaurants are visually
+      // distinguished out of the box. Still just a starting point: fully
+      // changeable afterward via the color picker like any other restaurant.
       const { data: created, error } = await window.supabaseClient
         .from('restaurants')
         .insert({
           user_id: currentUser.id, name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct,
           tipout_mode: restaurantPanelMode, payout_cadence: payoutCadence, payout_start_day: payoutStartDay,
+          bg_color: SECOND_RESTAURANT_BG_COLOR,
         })
         .select()
         .single();
