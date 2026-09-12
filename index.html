@@ -644,7 +644,7 @@
 <div id="restaurant-panel" style="display:none;">
   <div class="panel-card">
     <button class="panel-close" id="restaurantPanelCloseBtn" aria-label="Close">&times;</button>
-    <h1>Current restaurant</h1>
+    <h1 id="restaurantPanelTitle">Current restaurant</h1>
     <label for="restaurantPanelName">Restaurant name</label>
     <input type="text" id="restaurantPanelName" />
     <div class="mode-toggle-label">How does your restaurant calculate tipout?</div>
@@ -690,8 +690,10 @@
     </select>
     <button class="panel-save" id="restaurantPanelSaveBtn">Save changes</button>
     <div class="panel-status" id="restaurantPanelStatus"></div>
-    <hr class="panel-sep" />
-    <button class="panel-add-another" id="restaurantPanelAddAnother">Add another restaurant</button>
+    <div id="restaurantPanelAddAnotherWrap">
+      <hr class="panel-sep" />
+      <button class="panel-add-another" id="restaurantPanelAddAnother">Add another restaurant</button>
+    </div>
   </div>
 </div>
 <div id="delete-account-screen" style="display:none;">
@@ -1157,6 +1159,7 @@
     if (user) {
       await migrateLocalDataIfNeeded(user.id);
     }
+    await loadAppConfig();
     await loadRestaurants();
     await loadSettings();
     if (isSignedIn() && restaurants.length === 0) {
@@ -1292,6 +1295,20 @@
   let restaurants = [];
   let activeRestaurantId = null;
   const isSignedIn = () => !!currentUser;
+  // Global master switch (app_config.premium_enforcement_enabled) - while
+  // false, every Pro gate below behaves exactly as it did before Pro status
+  // existed, regardless of any individual user's is_pro flag. Only once this
+  // is manually flipped true does is_pro actually start mattering.
+  let premiumEnforcementEnabled = false;
+  function isProUnlocked() {
+    return premiumEnforcementEnabled && isSignedIn() && !!settings.isPro;
+  }
+  async function loadAppConfig() {
+    const { data, error } = await window.supabaseClient
+      .from('app_config').select('premium_enforcement_enabled').eq('id', true).maybeSingle();
+    if (error) { console.error('app_config load failed', error); return; }
+    premiumEnforcementEnabled = !!(data && data.premium_enforcement_enabled);
+  }
 
   // ---- Supabase <-> local field mapping ----
   function entryToRow(e, uid, restaurantId) {
@@ -1372,11 +1389,13 @@
     } catch (e) { localBlob = null; }
 
     let displayName = localBlob ? (localBlob.displayName || '') : '';
+    let isPro = false;
     if (isSignedIn()) {
       const { data, error } = await window.supabaseClient
         .from('user_settings').select('*').eq('user_id', currentUser.id).maybeSingle();
       if (error) console.error('settings load failed', error);
       displayName = (!error && data && data.display_name) ? data.display_name : '';
+      isPro = !!(!error && data && data.is_pro);
     }
 
     const restaurant = isSignedIn() ? getActiveRestaurant() : null;
@@ -1385,7 +1404,7 @@
     const tipPct = restaurant ? restaurant.tip_pct : (localBlob ? localBlob.tipPct : DEFAULT_SETTINGS.tipPct);
     const tipoutMode = restaurant ? (restaurant.tipout_mode || 'split') : (localBlob ? (localBlob.tipoutMode || 'split') : DEFAULT_SETTINGS.tipoutMode);
 
-    settings = { foodPct, barPct, tipPct, tipoutMode, displayName };
+    settings = { foodPct, barPct, tipPct, tipoutMode, displayName, isPro };
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
@@ -1495,6 +1514,10 @@
 
   // ---- Restaurant panel ----
   let restaurantPanelMode = 'split';
+  // When true, the panel's Save button inserts a brand-new restaurant
+  // instead of updating the active one - the panel form/fields are entirely
+  // reused rather than building a second "add restaurant" UI from scratch.
+  let restaurantPanelAddMode = false;
   function updateRestaurantPanelModeUi() {
     const combined = restaurantPanelMode === 'combined';
     $('restaurantPanelModeSplitBtn').classList.toggle('active', !combined);
@@ -1505,6 +1528,10 @@
   function openRestaurantPanel() {
     const r = getActiveRestaurant();
     if (!r) return;
+    restaurantPanelAddMode = false;
+    $('restaurantPanelTitle').textContent = 'Current restaurant';
+    $('restaurantPanelSaveBtn').textContent = 'Save changes';
+    $('restaurantPanelAddAnotherWrap').style.display = 'block';
     $('restaurantPanelName').value = r.name;
     $('restaurantPanelFoodPct').value = r.food_pct;
     $('restaurantPanelBarPct').value = r.bar_pct;
@@ -1517,7 +1544,25 @@
     $('restaurantPanelStatus').textContent = '';
     $('restaurant-panel').style.display = 'flex';
   }
+  function openRestaurantPanelForNew() {
+    restaurantPanelAddMode = true;
+    $('restaurantPanelTitle').textContent = 'Add restaurant';
+    $('restaurantPanelSaveBtn').textContent = 'Add restaurant';
+    $('restaurantPanelAddAnotherWrap').style.display = 'none';
+    $('restaurantPanelName').value = '';
+    $('restaurantPanelFoodPct').value = DEFAULT_SETTINGS.foodPct;
+    $('restaurantPanelBarPct').value = DEFAULT_SETTINGS.barPct;
+    $('restaurantPanelCombinedPct').value = DEFAULT_SETTINGS.foodPct;
+    $('restaurantPanelTipPct').value = DEFAULT_SETTINGS.tipPct;
+    restaurantPanelMode = 'split';
+    updateRestaurantPanelModeUi();
+    $('restaurantPanelCadence').value = 'weekly';
+    $('restaurantPanelStartDay').value = '0';
+    $('restaurantPanelStatus').textContent = '';
+    $('restaurant-panel').style.display = 'flex';
+  }
   function closeRestaurantPanel() {
+    restaurantPanelAddMode = false;
     $('restaurant-panel').style.display = 'none';
   }
   $('menuCurrentRestaurant').addEventListener('click', () => {
@@ -1541,8 +1586,8 @@
     note.style.display = note.style.display === 'none' ? 'block' : 'none';
   });
   $('restaurantPanelSaveBtn').addEventListener('click', async () => {
-    const r = getActiveRestaurant();
-    if (!r) return;
+    const r = restaurantPanelAddMode ? null : getActiveRestaurant();
+    if (!restaurantPanelAddMode && !r) return;
     const name = $('restaurantPanelName').value.trim();
     const combined = restaurantPanelMode === 'combined';
     const foodPct = parseFloat((combined ? $('restaurantPanelCombinedPct') : $('restaurantPanelFoodPct')).value) || 0;
@@ -1552,10 +1597,44 @@
       $('restaurantPanelStatus').textContent = 'Restaurant name is required.';
       return;
     }
-    const prevCadence = r.payout_cadence || 'weekly';
-    const prevStartDay = typeof r.payout_start_day === 'number' ? r.payout_start_day : 0;
     const payoutCadence = $('restaurantPanelCadence').value === 'biweekly' ? 'biweekly' : 'weekly';
     const payoutStartDay = parseInt($('restaurantPanelStartDay').value, 10) || 0;
+    const btn = $('restaurantPanelSaveBtn');
+    btn.disabled = true;
+    $('restaurantPanelStatus').textContent = '';
+
+    if (restaurantPanelAddMode) {
+      const { data: created, error } = await window.supabaseClient
+        .from('restaurants')
+        .insert({
+          user_id: currentUser.id, name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct,
+          tipout_mode: restaurantPanelMode, payout_cadence: payoutCadence, payout_start_day: payoutStartDay,
+        })
+        .select()
+        .single();
+      btn.disabled = false;
+      if (error || !created) {
+        console.error('restaurant create failed', error);
+        $('restaurantPanelStatus').textContent = 'Something went wrong. Please try again.';
+        return;
+      }
+      restaurants = [...restaurants, created];
+      activeRestaurantId = created.id;
+      try { localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId); } catch (e) {}
+      settings = { ...settings, foodPct: created.food_pct, barPct: created.bar_pct, tipPct: created.tip_pct, tipoutMode: created.tipout_mode || 'split' };
+      $('foodPct').value = settings.foodPct;
+      $('barPct').value = settings.barPct;
+      $('tipPct').value = settings.tipPct;
+      updateTipoutModeUi();
+      renderMastheadTitle();
+      closeRestaurantPanel();
+      await loadEntries();
+      renderHistory();
+      return;
+    }
+
+    const prevCadence = r.payout_cadence || 'weekly';
+    const prevStartDay = typeof r.payout_start_day === 'number' ? r.payout_start_day : 0;
     // Only ever set once: the first time biweekly is chosen with no anchor
     // yet, anchor it to the most recent occurrence of the chosen start day.
     // Purely a period-boundary reference point - never touches any existing
@@ -1564,9 +1643,6 @@
     if (payoutCadence === 'biweekly' && !payoutAnchorDate) {
       payoutAnchorDate = toDateInputValue(mostRecentWeekStart(Date.now(), payoutStartDay));
     }
-    const btn = $('restaurantPanelSaveBtn');
-    btn.disabled = true;
-    $('restaurantPanelStatus').textContent = '';
     const data = await updateActiveRestaurant({
       name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, tipout_mode: restaurantPanelMode,
       payout_cadence: payoutCadence, payout_start_day: payoutStartDay, payout_anchor_date: payoutAnchorDate,
@@ -1590,7 +1666,11 @@
     renderHistory();
   });
   $('restaurantPanelAddAnother').addEventListener('click', () => {
-    alert('Adding multiple restaurants is a Pro feature — upgrade to Pro to add more');
+    if (!isProUnlocked()) {
+      alert('Adding multiple restaurants is a Pro feature — upgrade to Pro to add more');
+      return;
+    }
+    openRestaurantPanelForNew();
   });
 
   // ---- Onboarding (first restaurant) ----
@@ -1674,6 +1754,7 @@
     if (signedIn) {
       $('menuEmail').textContent = currentUser.email || '';
       $('menuDisplayName').value = settings.displayName || '';
+      $('menuStatusValue').textContent = isProUnlocked() ? 'Pro' : 'Free';
     }
   }
   function openMenu() {
@@ -1689,7 +1770,13 @@
   $('menuCloseBtn').addEventListener('click', closeMenu);
   $('menuOverlay').addEventListener('click', closeMenu);
   $('menuDisplayName').addEventListener('change', saveSettings);
-  $('menuGetPro').addEventListener('click', () => alert('Coming soon'));
+  $('menuGetPro').addEventListener('click', () => {
+    if (isProUnlocked()) {
+      alert("You're already a Pro member.");
+      return;
+    }
+    alert('Coming soon');
+  });
 
   // ---- CSV export ----
   // RFC 4126-style field escaping: quote (and double up internal quotes)
@@ -2375,12 +2462,9 @@
   });
   document.querySelectorAll('#shiftTypeFilterRow input[type=checkbox]').forEach(cb => {
     cb.addEventListener('change', (ev) => {
-      // Pro-gated: no real Pro status yet, so this behaves the same for
-      // everyone - always revert an uncheck attempt and point at the
-      // upgrade message. shiftTypeFilters/renderStats() below are left
-      // wired up so real filtering just starts working the moment an
-      // actual Pro check replaces this always-revert.
-      if (!ev.target.checked) {
+      // Pro-gated: revert an uncheck attempt and show the upgrade message
+      // unless enforcement is live AND this user is actually Pro.
+      if (!ev.target.checked && !isProUnlocked()) {
         ev.target.checked = true;
         alert('Filtering by shift type is a Pro feature — upgrade to Pro to unlock');
         return;
