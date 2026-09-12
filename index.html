@@ -624,6 +624,42 @@
   #restaurant-switcher-screen .switcher-item:first-child { border-top: none; }
   #restaurant-switcher-screen .switcher-item.active { color: var(--brass); }
   #restaurant-switcher-screen .switcher-check { font-weight: 700; color: var(--brass); }
+
+  /* Privacy Policy / Terms of Service overlay - one reusable scrollable
+     panel, its title/body swapped in by JS depending on which was tapped. */
+  #legal-screen {
+    --bg: #16211B; --bg-2: #1D2C22; --paper: #F0EAD6; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E;
+    font-family: 'Archivo', sans-serif;
+    color: var(--ink);
+    position: fixed; inset: 0; z-index: 1200;
+    background: rgba(22, 33, 27, 0.92);
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  #legal-screen * { box-sizing: border-box; }
+  #legal-screen .legal-card {
+    position: relative; background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 420px; width: 100%;
+    max-height: calc(100vh - 48px); overflow-y: auto;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+  }
+  #legal-screen .legal-close {
+    position: absolute; top: 8px; right: 10px; background: none; border: none;
+    color: var(--ink-soft); font-size: 20px; line-height: 1; cursor: pointer;
+  }
+  #legal-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 18px; margin: 0 0 4px; text-align: center; padding-right: 20px; }
+  #legal-screen .legal-body { font-size: 13px; line-height: 1.5; }
+  #legal-screen .legal-body .legal-updated {
+    font-family: 'Space Mono', monospace; font-size: 11px; color: var(--ink-soft);
+    text-align: center; margin-bottom: 16px;
+  }
+  #legal-screen .legal-body h2 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 13.5px; margin: 16px 0 6px; }
+  #legal-screen .legal-body h2:first-of-type { margin-top: 0; }
+  #legal-screen .legal-body p { margin: 0 0 10px; }
+  #legal-screen .legal-body ul { margin: 0 0 10px; padding-left: 18px; }
+  #legal-screen .legal-body li { margin-bottom: 4px; }
+  #legal-screen .legal-body a { color: var(--ink); }
 </style>
 </head>
 <body>
@@ -754,6 +790,13 @@
     <div id="restaurantSwitcherList"></div>
   </div>
 </div>
+<div id="legal-screen" style="display:none;">
+  <div class="legal-card">
+    <button class="legal-close" id="legalCloseBtn" aria-label="Close">&times;</button>
+    <h1 id="legalTitle">Privacy Policy</h1>
+    <div class="legal-body" id="legalBody"></div>
+  </div>
+</div>
 <div id="delete-account-screen" style="display:none;">
   <div class="delete-card">
     <button class="delete-close" id="deleteCloseBtn" aria-label="Close">&times;</button>
@@ -804,6 +847,8 @@
     <button class="menu-item" id="menuLinkAccount">Link account to email</button>
     <div class="menu-sub">Sign in to save your data across devices</div>
   </div>
+  <button class="menu-item" id="menuPrivacyPolicy">Privacy Policy</button>
+  <button class="menu-item" id="menuTermsOfService">Terms of Service</button>
 </div>
 <div id="tipout-root">
   <div id="migrationToast" class="migration-toast" style="display:none;"></div>
@@ -2092,6 +2137,85 @@
     closeMenu();
     window.showLoginOverlay();
   });
+
+  // ---- Privacy Policy / Terms of Service ----
+  // Static content, no database involved - one reusable overlay whose
+  // title/body get swapped in depending on which menu item was tapped.
+  const PRIVACY_POLICY_HTML = `
+    <div class="legal-updated">Last updated: September 12, 2026</div>
+    <h2>What we collect</h2>
+    <ul>
+      <li><strong>Account info:</strong> your email address, and a display name if you choose to set one.</li>
+      <li><strong>Shift data:</strong> food sales, drink sales, charge tips, POS-calculated amounts, and any notes you enter for your own shifts.</li>
+      <li><strong>Restaurant info:</strong> the restaurant name and tipout percentages you set up, if you add a restaurant.</li>
+    </ul>
+    <h2>What we don't collect</h2>
+    <p>We don't collect your location, contacts, photos, or anything from your device beyond what you type into the app.</p>
+    <h2>How we use it</h2>
+    <p>Solely to run the app: calculating your tipout, storing your shift history, and showing you your own stats. We do not sell, rent, or share your data with advertisers.</p>
+    <h2>Who else touches your data</h2>
+    <ul>
+      <li><strong>Supabase</strong> (our database and login provider) stores your account and shift data securely.</li>
+      <li><strong>Resend</strong> (our email provider) sends you sign-in codes. They see your email address only for that purpose.</li>
+    </ul>
+    <p>Neither is authorized to use your data for anything beyond providing these services to us.</p>
+    <h2>Your data, your control</h2>
+    <ul>
+      <li>You can edit or delete any individual shift at any time.</li>
+      <li>You can delete your entire account and all associated data from inside the app (Menu &rarr; Account &rarr; Delete Account). This is permanent, immediate, and cannot be undone.</li>
+    </ul>
+    <h2>Changes to this policy</h2>
+    <p>If this policy changes, we'll update the date above.</p>
+    <h2>Contact</h2>
+    <p>Questions about your data? Reach us at <a href="mailto:support@dailytipout.app">support@dailytipout.app</a>.</p>
+  `;
+  const TERMS_OF_SERVICE_HTML = `
+    <div class="legal-updated">Last updated: September 12, 2026</div>
+    <h2>Agreement</h2>
+    <p>By using Daily Tipout, you agree to these terms. If you don't agree, please don't use the app.</p>
+    <h2>What the app does</h2>
+    <p>Daily Tipout helps restaurant servers calculate tipout, track shifts, and view their own earnings stats. It's a personal record-keeping tool — it doesn't process payroll, verify your numbers against your employer's records, or guarantee accuracy. You're responsible for checking your own figures.</p>
+    <h2>Your account</h2>
+    <ul>
+      <li>You must provide a real, working email to sign in.</li>
+      <li>You're responsible for keeping your sign-in access secure.</li>
+      <li>You can delete your account and all associated data at any time from the app's menu.</li>
+    </ul>
+    <h2>Free and Pro features</h2>
+    <ul>
+      <li>The app's core features are free to use.</li>
+      <li>Pro is an optional paid subscription unlocking additional features (extended stats history, multiple restaurants, and others as they're added). Pricing is shown before you subscribe.</li>
+      <li>Subscriptions renew automatically until cancelled. You can cancel anytime through your account settings — cancelling stops future charges but doesn't refund the current period.</li>
+    </ul>
+    <h2>Acceptable use</h2>
+    <p>Don't use the app to violate any law, interfere with the app's normal operation, or attempt to access another user's data.</p>
+    <h2>No warranty</h2>
+    <p>The app is provided "as is." We do our best to keep calculations accurate and the service running reliably, but we don't guarantee the app will be error-free or uninterrupted.</p>
+    <h2>Limitation of liability</h2>
+    <p>We're not liable for financial decisions you make based on the app's calculations, or for any dispute between you and your employer regarding tipout or wages. Always verify important figures independently.</p>
+    <h2>Changes to these terms</h2>
+    <p>We may update these terms as the app changes. Continued use after an update means you accept the new terms.</p>
+    <h2>Contact</h2>
+    <p>Questions? Reach us at <a href="mailto:support@dailytipout.app">support@dailytipout.app</a>.</p>
+  `;
+  function openLegalScreen(title, html) {
+    $('legalTitle').textContent = title;
+    $('legalBody').innerHTML = html;
+    $('legal-screen').style.display = 'flex';
+    $('legal-screen').querySelector('.legal-card').scrollTop = 0;
+  }
+  function closeLegalScreen() {
+    $('legal-screen').style.display = 'none';
+  }
+  $('menuPrivacyPolicy').addEventListener('click', () => {
+    closeMenu();
+    openLegalScreen('Privacy Policy', PRIVACY_POLICY_HTML);
+  });
+  $('menuTermsOfService').addEventListener('click', () => {
+    closeMenu();
+    openLegalScreen('Terms of Service', TERMS_OF_SERVICE_HTML);
+  });
+  $('legalCloseBtn').addEventListener('click', closeLegalScreen);
 
   // ---- Delete account ----
   const deleteScreen = $('delete-account-screen');
