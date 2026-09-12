@@ -923,8 +923,8 @@
         <div class="perf"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 
         <div class="period-row" id="periodRow">
-          <button class="period-btn active" data-period="7d">Last 7 days</button>
-          <button class="period-btn" data-period="30d">Last 30 days</button>
+          <button class="period-btn" data-period="7d">Last 7 days</button>
+          <button class="period-btn active" data-period="30d">Last 30 days</button>
           <button class="period-btn" data-period="month">This month</button>
           <button class="period-btn" data-period="custom">Select dates</button>
         </div>
@@ -2516,7 +2516,7 @@
   });
 
   // ---- Stats ----
-  let statsPeriod = '7d';
+  let statsPeriod = '30d';
   let customStart = null;
   let customEnd = null;
   let shiftTypeFilters = new Set(['AM', 'PM', 'BD']); // all checked = unfiltered
@@ -2545,6 +2545,13 @@
   document.querySelectorAll('.period-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const period = btn.getAttribute('data-period');
+      // Pro-gated: Last 30 days (the default) is free for everyone; the
+      // other three ranges require enforcement to be live AND this user to
+      // actually be Pro.
+      if (period !== '30d' && !isProUnlocked()) {
+        alert('This is a Pro feature — upgrade to Pro to unlock');
+        return;
+      }
       statsPeriod = period;
       document.querySelectorAll('.period-btn').forEach(b => b.classList.toggle('active', b === btn));
       $('customRangeRow').style.display = period === 'custom' ? 'flex' : 'none';
