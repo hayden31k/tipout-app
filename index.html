@@ -633,6 +633,12 @@
   #restaurant-switcher-screen .switcher-confirm-text {
     font-family: 'Space Mono', monospace; font-size: 12.5px; color: var(--ink-soft); margin: 0 0 22px; line-height: 1.55;
   }
+  #restaurant-switcher-screen input[type=text] {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--owe); border-radius: 3px;
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink); margin-bottom: 18px;
+    letter-spacing: 0.08em; text-align: center; text-transform: uppercase;
+  }
+  #restaurant-switcher-screen input[type=text]:focus { outline: none; border-color: var(--ink); }
   #restaurant-switcher-screen .switcher-confirm-btns { display: flex; gap: 10px; }
   #restaurant-switcher-screen .switcher-confirm-btns button {
     flex: 1; padding: 12px; border-radius: 3px; font-family: 'Archivo', sans-serif; font-weight: 600;
@@ -640,6 +646,7 @@
   }
   #restaurant-switcher-screen .switcher-confirm-cancel { background: transparent; border: 1.5px solid var(--rule); color: var(--ink); }
   #restaurant-switcher-screen .switcher-confirm-delete { background: var(--owe); color: #fff; }
+  #restaurant-switcher-screen .switcher-confirm-delete:disabled { opacity: 0.45; cursor: default; }
 
   /* Privacy Policy / Terms of Service overlay - one reusable scrollable
      panel, its title/body swapped in by JS depending on which was tapped. */
@@ -809,9 +816,10 @@
     <div id="switcherConfirmView" style="display:none;">
       <h1>Delete restaurant?</h1>
       <p class="switcher-confirm-text" id="switcherConfirmText"></p>
+      <input type="text" id="switcherConfirmInput" placeholder="DELETE" autocomplete="off" autocapitalize="characters" />
       <div class="switcher-confirm-btns">
         <button type="button" class="switcher-confirm-cancel" id="switcherConfirmCancel">Cancel</button>
-        <button type="button" class="switcher-confirm-delete" id="switcherConfirmDelete">Delete</button>
+        <button type="button" class="switcher-confirm-delete" id="switcherConfirmDelete" disabled>Delete</button>
       </div>
     </div>
   </div>
@@ -1887,15 +1895,29 @@
   });
 
   // Not Pro-gated - removing data is never a premium action, only adding
-  // beyond the first restaurant is.
+  // beyond the first restaurant is. Requires typing DELETE to confirm,
+  // same pattern as account deletion - losing a restaurant's whole shift
+  // history is just as unrecoverable as losing the account.
   let switcherDeleteTarget = null;
+  const switcherConfirmInput = $('switcherConfirmInput');
+  const switcherConfirmDeleteBtn = $('switcherConfirmDelete');
   function openSwitcherConfirm(restaurant) {
     switcherDeleteTarget = restaurant;
     $('switcherConfirmText').textContent =
       `Delete ${restaurant.name}? This permanently removes this restaurant and all its shifts. This cannot be undone.`;
+    switcherConfirmInput.value = '';
+    switcherConfirmInput.disabled = false;
+    switcherConfirmDeleteBtn.disabled = true;
     $('switcherListView').style.display = 'none';
     $('switcherConfirmView').style.display = 'block';
+    switcherConfirmInput.focus();
   }
+  switcherConfirmInput.addEventListener('input', () => {
+    switcherConfirmDeleteBtn.disabled = switcherConfirmInput.value.trim().toUpperCase() !== 'DELETE';
+  });
+  switcherConfirmInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && !switcherConfirmDeleteBtn.disabled) switcherConfirmDeleteBtn.click();
+  });
   $('switcherConfirmCancel').addEventListener('click', () => {
     switcherDeleteTarget = null;
     showSwitcherListView();
@@ -1939,11 +1961,13 @@
   $('switcherConfirmDelete').addEventListener('click', async () => {
     const target = switcherDeleteTarget;
     if (!target) return;
-    $('switcherConfirmDelete').disabled = true;
+    switcherConfirmDeleteBtn.disabled = true;
+    switcherConfirmInput.disabled = true;
     const ok = await deleteRestaurant(target);
-    $('switcherConfirmDelete').disabled = false;
     switcherDeleteTarget = null;
     if (!ok) {
+      switcherConfirmDeleteBtn.disabled = false;
+      switcherConfirmInput.disabled = false;
       showToast('Could not delete this restaurant - please try again.', 5000, true);
       showSwitcherListView();
       return;
