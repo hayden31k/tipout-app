@@ -617,14 +617,29 @@
     color: var(--ink-soft); font-size: 20px; line-height: 1; cursor: pointer;
   }
   #restaurant-switcher-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 18px; margin: 0 0 12px; text-align: center; }
+  #restaurant-switcher-screen .switcher-row { display: flex; align-items: center; border-top: 1px solid var(--rule); }
+  #restaurant-switcher-screen .switcher-row:first-child { border-top: none; }
   #restaurant-switcher-screen .switcher-item {
-    display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: left;
-    padding: 12px 4px; margin: 0; background: none; border: none; border-top: 1px solid var(--rule);
+    display: flex; align-items: center; justify-content: space-between; flex: 1 1 auto; min-width: 0; text-align: left;
+    padding: 12px 4px; margin: 0; background: none; border: none;
     font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px; color: var(--ink); cursor: pointer;
   }
-  #restaurant-switcher-screen .switcher-item:first-child { border-top: none; }
   #restaurant-switcher-screen .switcher-item.active { color: var(--brass); }
-  #restaurant-switcher-screen .switcher-check { font-weight: 700; color: var(--brass); }
+  #restaurant-switcher-screen .switcher-check { font-weight: 700; color: var(--brass); margin-left: 8px; }
+  #restaurant-switcher-screen .switcher-delete {
+    flex: none; background: none; border: none; color: var(--owe);
+    font-size: 15px; line-height: 1; padding: 8px 4px 8px 10px; cursor: pointer;
+  }
+  #restaurant-switcher-screen .switcher-confirm-text {
+    font-family: 'Space Mono', monospace; font-size: 12.5px; color: var(--ink-soft); margin: 0 0 22px; line-height: 1.55;
+  }
+  #restaurant-switcher-screen .switcher-confirm-btns { display: flex; gap: 10px; }
+  #restaurant-switcher-screen .switcher-confirm-btns button {
+    flex: 1; padding: 12px; border-radius: 3px; font-family: 'Archivo', sans-serif; font-weight: 600;
+    font-size: 14px; cursor: pointer; border: none;
+  }
+  #restaurant-switcher-screen .switcher-confirm-cancel { background: transparent; border: 1.5px solid var(--rule); color: var(--ink); }
+  #restaurant-switcher-screen .switcher-confirm-delete { background: var(--owe); color: #fff; }
 
   /* Privacy Policy / Terms of Service overlay - one reusable scrollable
      panel, its title/body swapped in by JS depending on which was tapped. */
@@ -787,8 +802,18 @@
 <div id="restaurant-switcher-screen" style="display:none;">
   <div class="switcher-card">
     <button class="switcher-close" id="restaurantSwitcherCloseBtn" aria-label="Close">&times;</button>
-    <h1>Switch restaurant</h1>
-    <div id="restaurantSwitcherList"></div>
+    <div id="switcherListView">
+      <h1>Switch restaurant</h1>
+      <div id="restaurantSwitcherList"></div>
+    </div>
+    <div id="switcherConfirmView" style="display:none;">
+      <h1>Delete restaurant?</h1>
+      <p class="switcher-confirm-text" id="switcherConfirmText"></p>
+      <div class="switcher-confirm-btns">
+        <button type="button" class="switcher-confirm-cancel" id="switcherConfirmCancel">Cancel</button>
+        <button type="button" class="switcher-confirm-delete" id="switcherConfirmDelete">Delete</button>
+      </div>
+    </div>
   </div>
 </div>
 <div id="legal-screen" style="display:none;">
@@ -1808,6 +1833,10 @@
   $('restaurantPanelCloseBtn').addEventListener('click', closeRestaurantPanel);
 
   // ---- Restaurant switcher ----
+  function showSwitcherListView() {
+    $('switcherConfirmView').style.display = 'none';
+    $('switcherListView').style.display = 'block';
+  }
   function openRestaurantSwitcher() {
     const list = $('restaurantSwitcherList');
     list.innerHTML = '';
@@ -1816,6 +1845,8 @@
     // would be an XSS hole the moment it contained markup.
     restaurants.forEach((r) => {
       const isActive = r.id === activeRestaurantId;
+      const row = document.createElement('div');
+      row.className = 'switcher-row';
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'switcher-item' + (isActive ? ' active' : '');
@@ -1833,16 +1864,96 @@
         if (r.id === activeRestaurantId) return;
         await activateRestaurant(r);
       });
-      list.appendChild(btn);
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'switcher-delete';
+      delBtn.setAttribute('aria-label', `Delete ${r.name}`);
+      delBtn.textContent = '\u{1F5D1}'; // trash icon
+      delBtn.addEventListener('click', () => openSwitcherConfirm(r));
+      row.appendChild(btn);
+      row.appendChild(delBtn);
+      list.appendChild(row);
     });
+    showSwitcherListView();
     $('restaurant-switcher-screen').style.display = 'flex';
   }
   function closeRestaurantSwitcher() {
     $('restaurant-switcher-screen').style.display = 'none';
+    showSwitcherListView();
   }
   $('menuSwitchRestaurant').addEventListener('click', () => {
     closeMenu();
     openRestaurantSwitcher();
+  });
+
+  // Not Pro-gated - removing data is never a premium action, only adding
+  // beyond the first restaurant is.
+  let switcherDeleteTarget = null;
+  function openSwitcherConfirm(restaurant) {
+    switcherDeleteTarget = restaurant;
+    $('switcherConfirmText').textContent =
+      `Delete ${restaurant.name}? This permanently removes this restaurant and all its shifts. This cannot be undone.`;
+    $('switcherListView').style.display = 'none';
+    $('switcherConfirmView').style.display = 'block';
+  }
+  $('switcherConfirmCancel').addEventListener('click', () => {
+    switcherDeleteTarget = null;
+    showSwitcherListView();
+  });
+  // Explicit shifts-then-restaurant delete rather than relying on an
+  // ON DELETE CASCADE existing on the schema - same reasoning as the
+  // delete-account Edge Function: correct regardless of whether a cascade
+  // also happens to be configured.
+  async function deleteRestaurant(restaurant) {
+    const uid = currentUser.id;
+    const { error: shiftsErr } = await window.supabaseClient
+      .from('shifts').delete().eq('user_id', uid).eq('restaurant_id', restaurant.id);
+    if (shiftsErr) {
+      console.error('shifts delete failed (restaurant deletion)', shiftsErr);
+      return false;
+    }
+    const { error: restaurantErr } = await window.supabaseClient
+      .from('restaurants').delete().eq('id', restaurant.id).eq('user_id', uid);
+    if (restaurantErr) {
+      console.error('restaurant delete failed', restaurantErr);
+      return false;
+    }
+    restaurants = restaurants.filter(r => r.id !== restaurant.id);
+    if (activeRestaurantId === restaurant.id) {
+      if (restaurants.length > 0) {
+        // Any of the others is fine - just needs to land on a valid one.
+        await activateRestaurant(restaurants[0]);
+      } else {
+        activeRestaurantId = null;
+        try { localStorage.removeItem(ACTIVE_RESTAURANT_KEY); } catch (e) {}
+        entries = [];
+        renderMastheadTitle();
+        applyRestaurantTheme(null);
+        renderHistory();
+        renderStats();
+      }
+    }
+    updateMenuAuthView();
+    return true;
+  }
+  $('switcherConfirmDelete').addEventListener('click', async () => {
+    const target = switcherDeleteTarget;
+    if (!target) return;
+    $('switcherConfirmDelete').disabled = true;
+    const ok = await deleteRestaurant(target);
+    $('switcherConfirmDelete').disabled = false;
+    switcherDeleteTarget = null;
+    if (!ok) {
+      showToast('Could not delete this restaurant - please try again.', 5000, true);
+      showSwitcherListView();
+      return;
+    }
+    if (restaurants.length === 0) {
+      closeRestaurantSwitcher();
+      showOnboarding();
+    } else {
+      openRestaurantSwitcher();
+    }
   });
   // Shared by both entry points to adding a restaurant - the top-level menu
   // item (shown only while there's exactly 1, so there's nothing to switch
