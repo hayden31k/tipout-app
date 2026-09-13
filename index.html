@@ -348,7 +348,14 @@
   .stat-card .value.locked { font-size: 12px; font-weight: 600; color: var(--ink-soft); opacity: 0.8; }
 
   .day-row { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
-  .day-row .day-label { width: 34px; font-family: 'Space Mono', monospace; font-size: 11.5px; color: var(--ink-soft); }
+  /* The day label doubles as the day-of-week filter toggle - a plain reset
+     button styled to look like the old static label, bold/full-opacity by
+     default (selected); .day-row.dimmed (below) covers the deselected look
+     since it dims the whole row, label included. */
+  .day-row .day-label {
+    width: 34px; font-family: 'Space Mono', monospace; font-size: 11.5px; text-align: left;
+    color: var(--ink); font-weight: 700; background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+  }
   .day-row .bar-track { flex: 1; height: 9px; background: var(--paper-2); border-radius: 2px; overflow: hidden; }
   .day-row .bar-fill { height: 100%; background: var(--brass); }
   .day-row .day-val { width: 62px; text-align: right; font-family: 'Space Mono', monospace; font-size: 11.5px; }
@@ -3018,22 +3025,25 @@
       renderStats();
     });
   });
-  // Day-of-week filter row is regenerated on every renderStats() call (it
-  // lives inside statsContent's innerHTML, next to the chart it controls),
-  // so listen via delegation on the stable statsContent element instead of
+  // The day-of-week toggle is the day chart's own day-label buttons (not a
+  // separate control row), regenerated on every renderStats() call, so
+  // listen via delegation on the stable statsContent element instead of
   // re-attaching per render.
-  $('statsContent').addEventListener('change', (ev) => {
-    if (!ev.target.matches('#dayOfWeekFilterRow input[type=checkbox]')) return;
-    // Pro-gated: revert an uncheck attempt and show the upgrade message
-    // unless enforcement is live AND this user is actually Pro.
-    if (!ev.target.checked && !isProUnlocked()) {
-      ev.target.checked = true;
+  $('statsContent').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.day-label');
+    if (!btn) return;
+    const day = Number(btn.getAttribute('data-day'));
+    const isSelected = dayOfWeekFilters.has(day);
+    // Pro-gated: block a deselect attempt and show the upgrade message
+    // unless enforcement is live AND this user is actually Pro. Re-selecting
+    // a day is always allowed - it only ever narrows the filter further, the
+    // same asymmetry the shift-type checkboxes use.
+    if (isSelected && !isProUnlocked()) {
       alert('Filtering by day of week is a Pro feature — upgrade to Pro to unlock');
       return;
     }
-    dayOfWeekFilters = new Set(
-      [...document.querySelectorAll('#dayOfWeekFilterRow input[type=checkbox]:checked')].map(c => Number(c.getAttribute('data-day')))
-    );
+    if (isSelected) dayOfWeekFilters.delete(day);
+    else dayOfWeekFilters.add(day);
     renderStats();
   });
 
@@ -3055,15 +3065,17 @@
       .filter(e => allShiftTypesOn || (e.shiftType && shiftTypeFilters.has(e.shiftType)))
       .filter(e => allDaysOn || dayOfWeekFilters.has(new Date(e.ts).getDay()));
 
-    if (!inRange.length) {
-      el.innerHTML = '<div class="stats-empty">No shifts logged in this period.</div>';
-      return;
-    }
+    // A filter combination narrowing to zero matching shifts is NOT treated
+    // as a dead end: the period selector, shift-type checkboxes, and the
+    // day-of-week toggles (below, as the day chart's own labels) all keep
+    // rendering below regardless, so the empty state is always recoverable.
+    // Only the stat cards and the day chart's numbers show an empty message.
+    const hasResults = inRange.length > 0;
 
     const tipsFor = (e) => (typeof e.cashTips === 'number' && !isNaN(e.cashTips) ? e.cashTips : 0) + (e.net < 0 ? Math.abs(e.net) : 0);
-    const avgTakehome = inRange.length ? inRange.reduce((s, e) => s + tipsFor(e), 0) / inRange.length : 0;
+    const avgTakehome = hasResults ? inRange.reduce((s, e) => s + tipsFor(e), 0) / inRange.length : 0;
     const totalTakehome = inRange.reduce((s, e) => s + tipsFor(e), 0);
-    const avgSales = inRange.reduce((s, e) => s + e.foodSales + e.barSales, 0) / inRange.length;
+    const avgSales = hasResults ? inRange.reduce((s, e) => s + e.foodSales + e.barSales, 0) / inRange.length : 0;
     const totalSales = inRange.reduce((s, e) => s + e.foodSales + e.barSales, 0);
     const totalGrossTips = inRange.reduce((s, e) => s + tipsFor(e) + (e.totalTipout || 0), 0);
     const grossTipPct = totalSales > 0 ? (totalGrossTips / totalSales * 100) : null;
@@ -3096,6 +3108,7 @@
     const maxAvg = Math.max(1, ...dayAverages.map(d => d.avg));
 
     el.innerHTML = `
+      ${hasResults ? `
       <div class="stat-grid stat-grid-8">
         <div class="stat-card"><div class="label">Total sales</div><div class="value">${fmt(totalSales)}</div></div>
         <div class="stat-card"><div class="label">Avg sales / shift</div><div class="value">${fmt(avgSales)}</div></div>
@@ -3106,15 +3119,13 @@
         <div class="stat-card"><div class="label">Net pay (wages + tips)</div><div class="value${wageBoxesLocked ? ' locked' : ''}">${wageBoxesLocked ? lockedValueHtml : (hasWageData ? fmt(netPay) : '—')}</div></div>
         <div class="stat-card"><div class="label">Hourly rate w/ tips</div><div class="value${wageBoxesLocked ? ' locked' : ''}">${wageBoxesLocked ? lockedValueHtml : (hourlyRateWithTips !== null ? fmt(hourlyRateWithTips) : '—')}</div></div>
       </div>
+      ` : `
+      <div class="stats-empty">No shifts match the current filters.</div>
+      `}
       <div class="stats-section-title">Avg sales by day worked</div>
-      <div class="filter-pill-row" id="dayOfWeekFilterRow">
-        ${DAY_NAMES.map((name, i) => `
-          <label class="filter-pill"><input type="checkbox" data-day="${i}" ${dayOfWeekFilters.has(i) ? 'checked' : ''} /> ${name}</label>
-        `).join('')}
-      </div>
       ${dayAverages.map((d, i) => `
         <div class="day-row${allDaysOn || dayOfWeekFilters.has(i) ? '' : ' dimmed'}">
-          <span class="day-label">${d.day}</span>
+          <button type="button" class="day-label" data-day="${i}">${d.day}</button>
           <span class="bar-track"><span class="bar-fill" style="width:${(d.avg / maxAvg * 100).toFixed(0)}%"></span></span>
           <span class="day-val">${d.count ? fmt(d.avg) : '—'}</span>
         </div>
