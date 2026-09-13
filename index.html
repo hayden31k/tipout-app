@@ -838,6 +838,7 @@
       <span class="menu-status-value" id="menuStatusValue">Free</span>
     </div>
     <button class="menu-item" id="menuCurrentRestaurant">Current restaurant</button>
+    <button class="menu-item" id="menuAddAnotherRestaurant" style="display:none;">Add another restaurant</button>
     <button class="menu-item" id="menuSwitchRestaurant" style="display:none;">Switch restaurant</button>
     <button class="menu-item" id="menuGetPro">Get Pro</button>
     <button class="menu-item" id="menuExportCsv">Export CSV</button>
@@ -1843,6 +1844,20 @@
     closeMenu();
     openRestaurantSwitcher();
   });
+  // Shared by both entry points to adding a restaurant - the top-level menu
+  // item (shown only while there's exactly 1, so there's nothing to switch
+  // between yet) and the "Current restaurant" panel's own bottom link.
+  function addAnotherRestaurant() {
+    if (!isProUnlocked()) {
+      alert('Adding multiple restaurants is a Pro feature — upgrade to Pro to add more');
+      return;
+    }
+    openRestaurantPanelForNew();
+  }
+  $('menuAddAnotherRestaurant').addEventListener('click', () => {
+    closeMenu();
+    addAnotherRestaurant();
+  });
   $('restaurantSwitcherCloseBtn').addEventListener('click', closeRestaurantSwitcher);
   $('restaurantPanelModeSplitBtn').addEventListener('click', () => {
     restaurantPanelMode = 'split';
@@ -1950,13 +1965,7 @@
     }
     renderHistory();
   });
-  $('restaurantPanelAddAnother').addEventListener('click', () => {
-    if (!isProUnlocked()) {
-      alert('Adding multiple restaurants is a Pro feature — upgrade to Pro to add more');
-      return;
-    }
-    openRestaurantPanelForNew();
-  });
+  $('restaurantPanelAddAnother').addEventListener('click', addAnotherRestaurant);
 
   // ---- Onboarding (first restaurant) ----
   function showOnboarding() {
@@ -2040,6 +2049,7 @@
       $('menuEmail').textContent = currentUser.email || '';
       $('menuDisplayName').value = settings.displayName || '';
       $('menuStatusValue').textContent = isProUnlocked() ? 'Pro' : 'Free';
+      $('menuAddAnotherRestaurant').style.display = restaurants.length === 1 ? 'block' : 'none';
       $('menuSwitchRestaurant').style.display = restaurants.length > 1 ? 'block' : 'none';
     }
   }
