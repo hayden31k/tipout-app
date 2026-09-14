@@ -348,14 +348,20 @@
   .stat-card .value.locked { font-size: 12px; font-weight: 600; color: var(--ink-soft); opacity: 0.8; }
 
   .day-row { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
-  /* The day label doubles as the day-of-week filter toggle - a plain reset
-     button styled to look like the old static label, bold/full-opacity by
-     default (selected); .day-row.dimmed (below) covers the deselected look
-     since it dims the whole row, label included. */
+  /* The day label doubles as the day-of-week filter toggle - a small brass
+     pill (same visual language as the AM/PM/BD .filter-pill, just more
+     compact to fit the chart's existing row height) with a checkmark when
+     selected; .off swaps that for a plain outline with no checkmark.
+     .day-row.dimmed (below) still dims the whole row for the deselected
+     look, on top of this. */
   .day-row .day-label {
-    width: 34px; font-family: 'Space Mono', monospace; font-size: 11.5px; text-align: left;
-    color: var(--ink); font-weight: 700; background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+    width: 44px; font-family: 'Space Mono', monospace; font-size: 10.5px;
+    color: var(--ink); font-weight: 700; cursor: pointer;
+    padding: 2px 0; border-radius: 9px; border: 1px solid var(--brass); background: rgba(176, 141, 87, 0.18);
   }
+  .day-row .day-label .check { font-size: 9px; line-height: 1; }
+  .day-row .day-label.off { border-color: var(--ink-soft); background: none; color: var(--ink-soft); font-weight: 600; }
   .day-row .bar-track { flex: 1; height: 9px; background: var(--paper-2); border-radius: 2px; overflow: hidden; }
   .day-row .bar-fill { height: 100%; background: var(--brass); }
   .day-row .day-val { width: 62px; text-align: right; font-family: 'Space Mono', monospace; font-size: 11.5px; }
@@ -3123,13 +3129,16 @@
       <div class="stats-empty">No shifts match the current filters.</div>
       `}
       <div class="stats-section-title">Avg sales by day worked</div>
-      ${dayAverages.map((d, i) => `
-        <div class="day-row${allDaysOn || dayOfWeekFilters.has(i) ? '' : ' dimmed'}">
-          <button type="button" class="day-label" data-day="${i}">${d.day}</button>
+      ${dayAverages.map((d, i) => {
+        const selected = allDaysOn || dayOfWeekFilters.has(i);
+        return `
+        <div class="day-row${selected ? '' : ' dimmed'}">
+          <button type="button" class="day-label${selected ? '' : ' off'}" data-day="${i}">${selected ? '<span class="check">✓</span>' : ''}${d.day}</button>
           <span class="bar-track"><span class="bar-fill" style="width:${(d.avg / maxAvg * 100).toFixed(0)}%"></span></span>
           <span class="day-val">${d.count ? fmt(d.avg) : '—'}</span>
         </div>
-      `).join('')}
+      `;
+      }).join('')}
       <div class="caption" style="margin-top:10px;font-size:11px;text-align:left;">based on ${inRange.length} shift${inRange.length === 1 ? '' : 's'} in this period</div>
     `;
   }
