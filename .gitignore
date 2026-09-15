@@ -1,0 +1,7 @@
+node_modules/
+
+# Generated web bundle copied into ios/ and android/ by `npm run sync`.
+# Rebuild it any time with: npm run build
+www/
+
+.DS_Store

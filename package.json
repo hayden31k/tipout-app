@@ -1,0 +1,23 @@
+{
+  "name": "tipout-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "rm -rf www && mkdir www && cp index.html manifest.json service-worker.js icon-192.png icon-512.png version.json www/",
+    "sync": "npm run build && npx cap sync",
+    "assets:generate": "capacitor-assets generate --ios --android --iconBackgroundColor '#133D26' --iconBackgroundColorDark '#0a3720' --splashBackgroundColor '#133D26' --splashBackgroundColorDark '#0a3720'"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Daily Tipout - nightly tipout calculator and tip tracker (PWA + Capacitor iOS/Android shells)",
+  "dependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
+    "@capacitor/ios": "^7.6.9"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.6.9"
+  }
+}
