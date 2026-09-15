@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "rm -rf www && mkdir www && cp index.html manifest.json service-worker.js icon-192.png icon-512.png version.json www/",
+    "build": "rm -rf www && mkdir -p www/vendor && cp index.html manifest.json service-worker.js icon-192.png icon-512.png version.json www/ && cp vendor/supabase-js.min.js www/vendor/",
     "sync": "npm run build && npx cap sync",
     "assets:generate": "capacitor-assets generate --ios --android --iconBackgroundColor '#133D26' --iconBackgroundColorDark '#0a3720' --splashBackgroundColor '#133D26' --splashBackgroundColorDark '#0a3720'"
   },
