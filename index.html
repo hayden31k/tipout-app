@@ -1101,7 +1101,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-17-a';
+  const APP_VERSION = '2026-09-17-b';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -1925,8 +1925,17 @@
         btn.appendChild(check);
       }
       btn.addEventListener('click', async () => {
+        if (r.id === activeRestaurantId) { closeRestaurantSwitcher(); return; }
+        // Switching between already-existing restaurants is itself a Pro
+        // action - otherwise someone who added a second restaurant while
+        // Pro, then lost Pro, could keep switching between them forever.
+        // The list stays open (and this restaurant's data untouched) so
+        // they can still see it exists; only the actual switch is blocked.
+        if (!isProUnlocked()) {
+          alert('Switching restaurants is a Pro feature — upgrade to Pro to switch');
+          return;
+        }
         closeRestaurantSwitcher();
-        if (r.id === activeRestaurantId) return;
         await activateRestaurant(r);
       });
       const delBtn = document.createElement('button');
