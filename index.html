@@ -297,6 +297,7 @@
   .envelope-card .receive-row { margin-top: 8px; }
   .envelope-card .receive-row input[type=checkbox] { width: 15px; height: 15px; }
   .envelope-card .receive-row label { font-size: 12px; color: var(--ink-soft); }
+  .envelope-card.received { opacity: 0.55; }
   .recent-envelopes { margin-bottom: 12px; }
   .recent-envelopes summary { cursor: pointer; font-family: 'Space Mono', monospace; font-size: 11px; color: var(--ink-soft); padding: 4px 2px 10px; }
   .recent-envelopes .envelope-card { filter: drop-shadow(0 2px 3px rgba(0,0,0,0.2)); }
@@ -1101,7 +1102,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-17-b';
+  const APP_VERSION = '2026-09-17-c';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -2688,27 +2689,33 @@
     currentBox.dataset.start = current.start;
     currentBox.dataset.end = current.end;
 
-    const pastPending = [...groups.values()]
-      .filter(g => g.start < current.start && g.entries.some(e => e.net < 0 && !e.received))
+    // A persistent history log, not just a pending-items list - shows the
+    // last few past periods regardless of received status (they used to
+    // disappear the moment everything in them was marked received).
+    const pastPeriods = [...groups.values()]
+      .filter(g => g.start < current.start)
       .sort((a, b) => b.start - a.start)
       .slice(0, 3);
 
     const recentSection = $('recentEnvelopesSection');
-    if (!pastPending.length) {
+    if (!pastPeriods.length) {
       recentSection.style.display = 'none';
       $('recentEnvelopesList').innerHTML = '';
     } else {
       recentSection.style.display = 'block';
-      $('recentEnvelopesSummary').textContent = `Recent envelopes (${pastPending.length})`;
-      $('recentEnvelopesList').innerHTML = pastPending.map(g => `
-        <div class="envelope-card">
+      $('recentEnvelopesSummary').textContent = `Recent envelopes (${pastPeriods.length})`;
+      $('recentEnvelopesList').innerHTML = pastPeriods.map(g => {
+        const allReceived = g.entries.every(e => e.net >= 0 || e.received);
+        return `
+        <div class="envelope-card ${allReceived ? 'received' : ''}">
           <div class="envelope-title">${formatPeriodRange(g.start, g.end)}</div>
           <div class="envelope-amt">${fmt(sumOwedAmount(g.entries))}</div>
           <div class="receive-row">
-            <input type="checkbox" id="envRecv-${g.start}" data-start="${g.start}" data-end="${g.end}" />
-            <label for="envRecv-${g.start}">I received this envelope</label>
+            <input type="checkbox" id="envRecv-${g.start}" data-start="${g.start}" data-end="${g.end}" ${allReceived ? 'checked' : ''} />
+            <label for="envRecv-${g.start}">${allReceived ? 'received' : 'mark received'}</label>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
       $('recentEnvelopesList').querySelectorAll('[data-start]').forEach(box => {
         box.addEventListener('change', (ev) => {
           markPeriodReceived(parseFloat(ev.currentTarget.dataset.start), parseFloat(ev.currentTarget.dataset.end), ev.currentTarget.checked);
