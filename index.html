@@ -211,7 +211,12 @@
   }
 
   .history-empty { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); background: var(--paper-2); padding: 14px; border-radius: 3px; text-align: center; }
-  .copy { position: relative; background: var(--paper); border-radius: 2px; padding: 30px 14px 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .copy { position: relative; background: var(--paper); border-radius: 2px; padding: 30px 14px 12px; margin-bottom: 8px; }
+  .copy-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .copy-details-toggle { margin-top: 8px; }
+  .copy-details-block { margin-top: 6px; }
+  .copy-details-block .sub { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: -0.01em; color: var(--ink-soft); word-break: break-word; }
+  .copy-details-block .pct-line { margin-top: 2px; opacity: 0.85; font-size: 9.5px; }
   .copy .shift-type-tag {
     position: absolute; bottom: 4px; right: 8px;
     font-family: 'Space Mono', monospace; font-size: 8.5px; letter-spacing: 0.05em;
@@ -789,6 +794,15 @@
     <input type="number" id="restaurantPanelTipPct" step="0.1" inputmode="decimal" />
     <div class="info-note" id="restaurantPanelChargeTipInfoNote" style="display:none;">The charge tip % covers the fee your restaurant is charged by their card payment processor on credit/debit tips — some restaurants pass this cost to servers, others don't. If your restaurant doesn't charge you for this, set it to 0%.</div>
     <div class="info-note-static">These percentages don't add together — each applies separately to its own sales category, not combined.</div>
+    <div class="field-row-label-info">
+      <button type="button" class="settings-toggle" id="restaurantPanelEventToggle">Dessert / Event / Other</button>
+      <button type="button" class="info-btn" id="restaurantPanelEventInfoBtn" aria-label="What is Dessert / Event / Other?">&#9432;</button>
+    </div>
+    <div class="info-note" id="restaurantPanelEventInfoNote" style="display:none;">Some restaurants have a separate tipout rate for event or dessert sales (e.g. a cake-cutting fee). If you have any today, enter them here.</div>
+    <div class="settings-block" id="restaurantPanelEventBlock" style="display:none;">
+      <label for="restaurantPanelEventPct">Event/dessert tipout %</label>
+      <input type="number" id="restaurantPanelEventPct" step="0.1" inputmode="decimal" placeholder="0" />
+    </div>
     <label for="restaurantPanelHourlyWage">Hourly wage (before tips) &mdash; optional</label>
     <input type="number" id="restaurantPanelHourlyWage" step="0.01" inputmode="decimal" placeholder="0.00" />
     <div class="mode-toggle-label">How often are tips paid out?</div>
@@ -986,6 +1000,22 @@
           <div class="info-note-static">These percentages don't add together — each applies separately to its own sales category, not combined.</div>
         </div>
 
+        <div class="field-row-label-info">
+          <button class="settings-toggle" id="eventToggle">Dessert / Event / Other</button>
+          <button type="button" class="info-btn" id="eventInfoBtn" aria-label="What is Dessert / Event / Other?">&#9432;</button>
+        </div>
+        <div class="info-note" id="eventInfoNote" style="display:none;">Some restaurants have a separate tipout rate for event or dessert sales (e.g. a cake-cutting fee). If you have any today, enter them here.</div>
+        <div class="settings-block" id="eventBlock" style="display:none;">
+          <div class="field-row">
+            <label>Event/dessert sales<span class="hint">optional</span></label>
+            <input type="number" inputmode="decimal" id="eventSales" placeholder="0.00" />
+          </div>
+          <div class="field-row">
+            <label>Event/dessert tipout %</label>
+            <input type="number" inputmode="decimal" id="eventPct" step="0.1" placeholder="0" />
+          </div>
+        </div>
+
         <button class="calc-btn" id="calcBtn">Calculate</button>
 
         <div class="result" id="resultBlock" style="display:none;">
@@ -1069,7 +1099,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-11-p';
+  const APP_VERSION = '2026-09-16-a';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -1435,7 +1465,7 @@
   function sumOwedAmount(list) {
     return list.reduce((sum, e) => sum + (e.net < 0 ? Math.abs(e.net) : 0), 0);
   }
-  const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, tipoutMode: 'split', displayName: '', hourlyWage: null };
+  const DEFAULT_SETTINGS = { foodPct: 7.5, barPct: 3, tipPct: 2, eventPct: 0, tipoutMode: 'split', displayName: '', hourlyWage: null };
   const ACTIVE_RESTAURANT_KEY = 'tipout-active-restaurant-id';
   const DEFAULT_BG_COLOR = '#133D26';
   const SECOND_RESTAURANT_BG_COLOR = '#B8D4E3';
@@ -1454,6 +1484,7 @@
   let entries = [];
   let lastCalc = null;
   let editingId = null;
+  let expandedDetailsIds = new Set();
   // TEMP DEBUG: counts how many times wireEditCard() attaches listeners,
   // and how many times the ed-save click handler body actually runs per
   // click - to directly confirm or rule out stacked/duplicate listeners.
@@ -1490,6 +1521,7 @@
       ts: e.ts,
       food_sales: e.foodSales,
       bar_sales: e.barSales,
+      event_sales: e.eventSales || 0,
       charge_tips: e.chargeTips,
       pos_calculated: e.posCalculated,
       total_tipout: e.totalTipout,
@@ -1509,6 +1541,7 @@
       ts: r.ts,
       foodSales: r.food_sales,
       barSales: r.bar_sales,
+      eventSales: r.event_sales || 0,
       chargeTips: r.charge_tips,
       posCalculated: r.pos_calculated,
       totalTipout: r.total_tipout,
@@ -1575,13 +1608,15 @@
     const foodPct = restaurant ? restaurant.food_pct : (localBlob ? localBlob.foodPct : DEFAULT_SETTINGS.foodPct);
     const barPct = restaurant ? restaurant.bar_pct : (localBlob ? localBlob.barPct : DEFAULT_SETTINGS.barPct);
     const tipPct = restaurant ? restaurant.tip_pct : (localBlob ? localBlob.tipPct : DEFAULT_SETTINGS.tipPct);
+    const eventPct = restaurant ? (restaurant.event_pct || 0) : (localBlob ? (localBlob.eventPct || 0) : DEFAULT_SETTINGS.eventPct);
     const tipoutMode = restaurant ? (restaurant.tipout_mode || 'split') : (localBlob ? (localBlob.tipoutMode || 'split') : DEFAULT_SETTINGS.tipoutMode);
     const hourlyWage = restaurant ? restaurant.hourly_wage : (localBlob ? localBlob.hourlyWage : DEFAULT_SETTINGS.hourlyWage);
 
-    settings = { foodPct, barPct, tipPct, tipoutMode, displayName, isPro, hourlyWage };
+    settings = { foodPct, barPct, tipPct, eventPct, tipoutMode, displayName, isPro, hourlyWage };
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
+    $('eventPct').value = settings.eventPct || '';
     updateTipoutModeUi();
     $('menuDisplayName').value = settings.displayName || '';
     renderGreeting();
@@ -1600,7 +1635,7 @@
   async function persistPercentages() {
     const restaurant = isSignedIn() ? getActiveRestaurant() : null;
     if (restaurant) {
-      await updateActiveRestaurant({ food_pct: settings.foodPct, bar_pct: settings.barPct, tip_pct: settings.tipPct, tipout_mode: settings.tipoutMode });
+      await updateActiveRestaurant({ food_pct: settings.foodPct, bar_pct: settings.barPct, tip_pct: settings.tipPct, event_pct: settings.eventPct, tipout_mode: settings.tipoutMode });
     } else {
       try { localStorage.setItem('tipout-settings', JSON.stringify(settings)); }
       catch (e) { console.error('settings save failed', e); }
@@ -1615,6 +1650,7 @@
       foodPct: parseFloat((combined ? $('combinedPct') : $('foodPct')).value) || 0,
       barPct: parseFloat($('barPct').value) || 0,
       tipPct: parseFloat($('tipPct').value) || 0,
+      eventPct: parseFloat($('eventPct').value) || 0,
       tipoutMode: settings.tipoutMode || 'split',
       displayName: $('menuDisplayName').value.trim(),
       hourlyWage: settings.hourlyWage,
@@ -1707,10 +1743,11 @@
   async function activateRestaurant(restaurant) {
     activeRestaurantId = restaurant.id;
     try { localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId); } catch (e) {}
-    settings = { ...settings, foodPct: restaurant.food_pct, barPct: restaurant.bar_pct, tipPct: restaurant.tip_pct, tipoutMode: restaurant.tipout_mode || 'split', hourlyWage: restaurant.hourly_wage };
+    settings = { ...settings, foodPct: restaurant.food_pct, barPct: restaurant.bar_pct, tipPct: restaurant.tip_pct, eventPct: restaurant.event_pct || 0, tipoutMode: restaurant.tipout_mode || 'split', hourlyWage: restaurant.hourly_wage };
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
+    $('eventPct').value = settings.eventPct || '';
     updateTipoutModeUi();
     renderMastheadTitle();
     applyRestaurantTheme(restaurant);
@@ -1817,6 +1854,8 @@
     $('restaurantPanelBarPct').value = r.bar_pct;
     $('restaurantPanelCombinedPct').value = r.food_pct;
     $('restaurantPanelTipPct').value = r.tip_pct;
+    $('restaurantPanelEventPct').value = r.event_pct || '';
+    $('restaurantPanelEventBlock').style.display = 'none';
     $('restaurantPanelHourlyWage').value = (r.hourly_wage !== null && r.hourly_wage !== undefined) ? r.hourly_wage : '';
     restaurantPanelMode = r.tipout_mode || 'split';
     updateRestaurantPanelModeUi();
@@ -1836,6 +1875,8 @@
     $('restaurantPanelBarPct').value = DEFAULT_SETTINGS.barPct;
     $('restaurantPanelCombinedPct').value = DEFAULT_SETTINGS.foodPct;
     $('restaurantPanelTipPct').value = DEFAULT_SETTINGS.tipPct;
+    $('restaurantPanelEventPct').value = '';
+    $('restaurantPanelEventBlock').style.display = 'none';
     $('restaurantPanelHourlyWage').value = '';
     restaurantPanelMode = 'split';
     updateRestaurantPanelModeUi();
@@ -2023,6 +2064,14 @@
     const note = $('restaurantPanelChargeTipInfoNote');
     note.style.display = note.style.display === 'none' ? 'block' : 'none';
   });
+  $('restaurantPanelEventToggle').addEventListener('click', () => {
+    const block = $('restaurantPanelEventBlock');
+    block.style.display = block.style.display === 'none' ? 'block' : 'none';
+  });
+  $('restaurantPanelEventInfoBtn').addEventListener('click', () => {
+    const note = $('restaurantPanelEventInfoNote');
+    note.style.display = note.style.display === 'none' ? 'block' : 'none';
+  });
   $('restaurantPanelSaveBtn').addEventListener('click', async () => {
     const r = restaurantPanelAddMode ? null : getActiveRestaurant();
     if (!restaurantPanelAddMode && !r) return;
@@ -2031,6 +2080,7 @@
     const foodPct = parseFloat((combined ? $('restaurantPanelCombinedPct') : $('restaurantPanelFoodPct')).value) || 0;
     const barPct = parseFloat($('restaurantPanelBarPct').value) || 0;
     const tipPct = parseFloat($('restaurantPanelTipPct').value) || 0;
+    const eventPct = parseFloat($('restaurantPanelEventPct').value) || 0;
     const hourlyWageVal = $('restaurantPanelHourlyWage').value;
     const hourlyWage = hourlyWageVal === '' ? null : (parseFloat(hourlyWageVal) || 0);
     if (!name) {
@@ -2053,7 +2103,7 @@
       const { data: created, error } = await window.supabaseClient
         .from('restaurants')
         .insert({
-          user_id: currentUser.id, name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct,
+          user_id: currentUser.id, name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, event_pct: eventPct,
           tipout_mode: restaurantPanelMode, payout_cadence: payoutCadence, payout_start_day: payoutStartDay,
           bg_color: SECOND_RESTAURANT_BG_COLOR, hourly_wage: hourlyWage,
         })
@@ -2068,10 +2118,11 @@
       restaurants = [...restaurants, created];
       activeRestaurantId = created.id;
       try { localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId); } catch (e) {}
-      settings = { ...settings, foodPct: created.food_pct, barPct: created.bar_pct, tipPct: created.tip_pct, tipoutMode: created.tipout_mode || 'split', hourlyWage: created.hourly_wage };
+      settings = { ...settings, foodPct: created.food_pct, barPct: created.bar_pct, tipPct: created.tip_pct, eventPct: created.event_pct || 0, tipoutMode: created.tipout_mode || 'split', hourlyWage: created.hourly_wage };
       $('foodPct').value = settings.foodPct;
       $('barPct').value = settings.barPct;
       $('tipPct').value = settings.tipPct;
+      $('eventPct').value = settings.eventPct || '';
       updateTipoutModeUi();
       renderMastheadTitle();
       applyRestaurantTheme(created);
@@ -2092,7 +2143,7 @@
       payoutAnchorDate = toDateInputValue(mostRecentWeekStart(Date.now(), payoutStartDay));
     }
     const data = await updateActiveRestaurant({
-      name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, tipout_mode: restaurantPanelMode,
+      name, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, event_pct: eventPct, tipout_mode: restaurantPanelMode,
       payout_cadence: payoutCadence, payout_start_day: payoutStartDay, payout_anchor_date: payoutAnchorDate,
       hourly_wage: hourlyWage,
     });
@@ -2101,10 +2152,11 @@
       $('restaurantPanelStatus').textContent = 'Something went wrong. Please try again.';
       return;
     }
-    settings = { ...settings, foodPct: data.food_pct, barPct: data.bar_pct, tipPct: data.tip_pct, tipoutMode: data.tipout_mode || 'split', hourlyWage: data.hourly_wage };
+    settings = { ...settings, foodPct: data.food_pct, barPct: data.bar_pct, tipPct: data.tip_pct, eventPct: data.event_pct || 0, tipoutMode: data.tipout_mode || 'split', hourlyWage: data.hourly_wage };
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
+    $('eventPct').value = settings.eventPct || '';
     updateTipoutModeUi();
     renderMastheadTitle();
     closeRestaurantPanel();
@@ -2167,11 +2219,12 @@
     activeRestaurantId = restaurant.id;
     try { localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId); } catch (e) {}
 
-    settings = { ...settings, foodPct, barPct, tipPct, tipoutMode: 'split', displayName: name };
+    settings = { ...settings, foodPct, barPct, tipPct, eventPct: restaurant.event_pct || 0, tipoutMode: 'split', displayName: name };
     await persistDisplayName();
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
     $('tipPct').value = settings.tipPct;
+    $('eventPct').value = settings.eventPct || '';
     updateTipoutModeUi();
     $('menuDisplayName').value = settings.displayName;
 
@@ -2576,8 +2629,9 @@
   function recompute(e) {
     const tipoutFood = e.foodSales * (settings.foodPct / 100);
     const tipoutBar = e.barSales * (settings.barPct / 100);
+    const tipoutEvent = (e.eventSales || 0) * (settings.eventPct / 100);
     const tipoutTip = e.chargeTips * (settings.tipPct / 100);
-    e.totalTipout = tipoutFood + tipoutBar + tipoutTip;
+    e.totalTipout = tipoutFood + tipoutBar + tipoutEvent + tipoutTip;
     e.net = e.posCalculated + e.totalTipout;
     if (typeof e.cashTips === 'number' && !isNaN(e.cashTips)) e.takeHome = e.cashTips;
     return e;
@@ -2688,6 +2742,13 @@
       const shiftNetPay = hasWageLines ? (e.hoursWorked * hourlyWage) + totalTips : null;
       const shiftHourlyRate = hasWageLines ? (shiftNetPay / e.hoursWorked) : null;
 
+      const eventSalesVal = e.eventSales || 0;
+      const eventUsed = eventSalesVal !== 0;
+      const tipoutFoodAmt = e.foodSales * (settings.foodPct / 100);
+      const tipoutBarAmt = e.barSales * (settings.barPct / 100);
+      const tipoutEventAmt = eventSalesVal * (settings.eventPct / 100);
+      const tipoutChargeAmt = e.chargeTips * (settings.tipPct / 100);
+
       let subLine;
       if (e.net < 0) {
         subLine = `restaurant owes you ${fmt(owedAmt)}`;
@@ -2703,22 +2764,32 @@
           <label for="recv-${e.id}">${e.received ? 'received' : 'mark received'}</label>
         </div>` : '';
       const receivedCls = e.received ? 'received' : '';
+      const detailsExpanded = expandedDetailsIds.has(e.id);
       return `<div class="copy ${receivedCls}" data-id="${e.id}">
-        <div class="meta">
-          <div class="date">${dateStr}</div>
-          <div class="sub">F ${e.foodSales} &middot; D ${e.barSales}</div>
+        <div class="copy-top">
+          <div class="meta">
+            <div class="date">${dateStr}</div>
+            ${receiveRow}
+          </div>
+          <div class="amtwrap">
+            <div class="amt get">${fmt(totalTips)}</div>
+            <div class="cash">${subLine}</div>
+            ${hasWageLines ? `
+            <div class="sub pct-line">Net pay (wages + tips) &middot; ${fmt(shiftNetPay)}</div>
+            <div class="sub pct-line">Hourly rate w/ tips &middot; ${fmt(shiftHourlyRate)}</div>` : ''}
+          </div>
+        </div>
+        <button type="button" class="settings-toggle copy-details-toggle" data-details-toggle="${e.id}">Details</button>
+        <div class="settings-block copy-details-block" id="copyDetails-${e.id}" style="display:${detailsExpanded ? 'block' : 'none'};">
+          <div class="sub">F ${e.foodSales} &middot; D ${e.barSales}${eventUsed ? ` &middot; E ${eventSalesVal}` : ''}</div>
           ${grossPct !== null ? `
           <div class="sub pct-line">Tipout % &middot; ${tipoutPct.toFixed(1)}%</div>
           <div class="sub pct-line">Gross tip % &middot; ${grossPct.toFixed(1)}%</div>
           <div class="sub pct-line">Net tip % &middot; ${netPct.toFixed(1)}%</div>` : ''}
-          ${receiveRow}
-        </div>
-        <div class="amtwrap">
-          <div class="amt get">${fmt(totalTips)}</div>
-          <div class="cash">${subLine}</div>
-          ${hasWageLines ? `
-          <div class="sub pct-line">Net pay (wages + tips) &middot; ${fmt(shiftNetPay)}</div>
-          <div class="sub pct-line">Hourly rate w/ tips &middot; ${fmt(shiftHourlyRate)}</div>` : ''}
+          <div class="sub pct-line">Food tipout: ${fmt(tipoutFoodAmt)}</div>
+          <div class="sub pct-line">Drink tipout: ${fmt(tipoutBarAmt)}</div>
+          ${eventUsed ? `<div class="sub pct-line">Event tipout: ${fmt(tipoutEventAmt)}</div>` : ''}
+          <div class="sub pct-line">Charge tip: ${fmt(tipoutChargeAmt)}</div>
         </div>
         <button class="edit-btn" data-edit="${e.id}" aria-label="Edit shift">&#9998;</button>
         ${e.shiftType ? `<span class="shift-type-tag">${e.shiftType}</span>` : ''}
@@ -2748,6 +2819,14 @@
     } else {
       wireEditCard();
     }
+    list.querySelectorAll('[data-details-toggle]').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        const id = ev.currentTarget.getAttribute('data-details-toggle');
+        if (expandedDetailsIds.has(id)) expandedDetailsIds.delete(id);
+        else expandedDetailsIds.add(id);
+        renderHistory();
+      });
+    });
 
     const pending = entries.filter(e => e.net < 0 && !e.received).reduce((s, e) => s + Math.abs(e.net), 0);
     $('pendingTotal').textContent = pending > 0
@@ -2761,6 +2840,7 @@
       <div class="field-row"><label>Date</label><input type="date" id="ed-date" value="${toDateInputValue(e.ts)}" /></div>
       <div class="field-row"><label>Food sales</label><input type="number" id="ed-food" value="${e.foodSales}" /></div>
       <div class="field-row"><label>Drink sales</label><input type="number" id="ed-bar" value="${e.barSales}" /></div>
+      <div class="field-row"><label>Event/dessert sales</label><input type="number" id="ed-event" value="${e.eventSales || 0}" /></div>
       <div class="field-row"><label>Charge tip</label><input type="number" id="ed-charge" value="${e.chargeTips}" /></div>
       <div class="field-row"><label>POS calculated</label><input type="number" id="ed-pos" min="0" value="${Math.abs(e.posCalculated)}" /></div>
       <div class="sign-row">
@@ -2821,6 +2901,7 @@
       console.log('[tipout] ed-save: entry.ts AFTER=' + entry.ts + ' (' + new Date(entry.ts) + ') - changed? ' + (dateVal ? 'yes, dateVal was truthy' : 'NO - dateVal was falsy, assignment block was SKIPPED'));
       entry.foodSales = parseFloat($('ed-food').value) || 0;
       entry.barSales = parseFloat($('ed-bar').value) || 0;
+      entry.eventSales = parseFloat($('ed-event').value) || 0;
       entry.chargeTips = parseFloat($('ed-charge').value) || 0;
       entry.posCalculated = Math.abs(parseFloat($('ed-pos').value) || 0) * editPosSign;
       const cashVal = $('ed-cash').value;
@@ -2869,18 +2950,20 @@
     // barSales * settings.barPct term is simply 0 when there's no bar sales).
     const foodSales = combined ? (parseFloat($('totalSales').value) || 0) : (parseFloat($('foodSales').value) || 0);
     const barSales = combined ? 0 : (parseFloat($('barSales').value) || 0);
+    const eventSales = parseFloat($('eventSales').value) || 0;
     const chargeTips = parseFloat($('chargeTips').value) || 0;
     const posCalculated = Math.abs(parseFloat($('posCalc').value) || 0) * posSign;
 
     const tipoutFood = foodSales * (settings.foodPct / 100);
     const tipoutBar = barSales * (settings.barPct / 100);
+    const tipoutEvent = eventSales * (settings.eventPct / 100);
     const tipoutTip = chargeTips * (settings.tipPct / 100);
-    const totalTipout = tipoutFood + tipoutBar + tipoutTip;
+    const totalTipout = tipoutFood + tipoutBar + tipoutEvent + tipoutTip;
     const whatYouOwe = posCalculated + totalTipout;
     const totalSales = foodSales + barSales;
     const tipoutPctOfSales = totalSales > 0 ? (totalTipout / totalSales * 100) : null;
 
-    lastCalc = { id: crypto.randomUUID(), foodSales, barSales, chargeTips, posCalculated, totalTipout, net: whatYouOwe, ts: Date.now() };
+    lastCalc = { id: crypto.randomUUID(), foodSales, barSales, eventSales, chargeTips, posCalculated, totalTipout, net: whatYouOwe, ts: Date.now() };
     if (shiftType) lastCalc.shiftType = shiftType;
 
     $('resultAmount').textContent = fmt(Math.abs(whatYouOwe));
@@ -2888,6 +2971,10 @@
     $('resultCaption').textContent = whatYouOwe >= 0 ? 'you owe the restaurant' : 'the restaurant owes you';
     $('breakdown').innerHTML = `
       <div><span>total tipout${tipoutPctOfSales !== null ? ' (' + tipoutPctOfSales.toFixed(1) + '%)' : ''}</span><span>${fmt(totalTipout)}</span></div>
+      <div><span>Food tipout</span><span>${fmt(tipoutFood)}</span></div>
+      <div><span>Drink tipout</span><span>${fmt(tipoutBar)}</span></div>
+      ${eventSales !== 0 ? `<div><span>Event tipout</span><span>${fmt(tipoutEvent)}</span></div>` : ''}
+      <div><span>Charge tip</span><span>${fmt(tipoutTip)}</span></div>
       <div><span>POS calculated</span><span>${fmt(posCalculated)}</span></div>
     `;
     $('resultBlock').style.display = 'block';
@@ -2900,7 +2987,16 @@
     const block = $('settingsBlock');
     block.style.display = block.style.display === 'none' ? 'block' : 'none';
   });
-  ['foodPct','barPct','tipPct','combinedPct'].forEach(id => $(id).addEventListener('change', saveSettings));
+  ['foodPct','barPct','tipPct','combinedPct','eventPct'].forEach(id => $(id).addEventListener('change', saveSettings));
+
+  $('eventToggle').addEventListener('click', () => {
+    const block = $('eventBlock');
+    block.style.display = block.style.display === 'none' ? 'block' : 'none';
+  });
+  $('eventInfoBtn').addEventListener('click', () => {
+    const note = $('eventInfoNote');
+    note.style.display = note.style.display === 'none' ? 'block' : 'none';
+  });
 
   $('calcBtn').addEventListener('click', calculate);
   $('cashTips').addEventListener('input', updateTakehome);
@@ -2938,7 +3034,7 @@
   });
 
   $('clearBtn').addEventListener('click', () => {
-    ['foodSales','barSales','totalSales','chargeTips','posCalc','cashTips','hoursWorked'].forEach(id => $(id).value = '');
+    ['foodSales','barSales','totalSales','eventSales','chargeTips','posCalc','cashTips','hoursWorked'].forEach(id => $(id).value = '');
     $('resultBlock').style.display = 'none';
     lastCalc = null;
     posSign = 1;
@@ -2952,7 +3048,7 @@
     if (!lastCalc) return;
     entries.push(lastCalc);
     renderHistory();
-    ['foodSales','barSales','totalSales','chargeTips','posCalc','cashTips','hoursWorked'].forEach(id => $(id).value = '');
+    ['foodSales','barSales','totalSales','eventSales','chargeTips','posCalc','cashTips','hoursWorked'].forEach(id => $(id).value = '');
     $('resultBlock').style.display = 'none';
     lastCalc = null;
     posSign = 1;
