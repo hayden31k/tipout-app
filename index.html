@@ -189,6 +189,8 @@
   .result .caption { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
   .breakdown { margin-top: 14px; font-family: 'Space Mono', monospace; font-size: 11px; color: var(--ink-soft); text-align: left; }
   .breakdown div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 2px 10px; padding: 3px 0; }
+  .breakdown-divider { border: none; border-top: 1px dashed var(--rule); margin: 4px 0; }
+  .breakdown .breakdown-total { font-weight: 700; color: var(--ink); font-size: 12px; }
 
   .cash-block { margin-top: 18px; padding-top: 16px; border-top: 1.5px dashed var(--rule); }
   .cash-block .field-row label { font-size: 13px; }
@@ -946,6 +948,23 @@
           <label>Total sales<span class="hint">total food + drink sold, before tax</span></label>
           <input type="number" inputmode="decimal" id="totalSales" placeholder="0.00" />
         </div>
+
+        <div class="field-row-label-info">
+          <button class="settings-toggle" id="eventToggle">Dessert / Event / Other</button>
+          <button type="button" class="info-btn" id="eventInfoBtn" aria-label="What is Dessert / Event / Other?">&#9432;</button>
+        </div>
+        <div class="info-note" id="eventInfoNote" style="display:none;">Some restaurants have a separate tipout rate for event or dessert sales (e.g. a cake-cutting fee). If you have any today, enter them here.</div>
+        <div class="settings-block" id="eventBlock" style="display:none;">
+          <div class="field-row">
+            <label>Event/dessert sales<span class="hint">optional</span></label>
+            <input type="number" inputmode="decimal" id="eventSales" placeholder="0.00" />
+          </div>
+          <div class="field-row">
+            <label>Event/dessert tipout %</label>
+            <input type="number" inputmode="decimal" id="eventPct" step="0.1" placeholder="0" />
+          </div>
+        </div>
+
         <div class="field-row">
           <label>Charge tip<span class="hint">total tips on card/debit machine</span></label>
           <input type="number" inputmode="decimal" id="chargeTips" placeholder="0.00" />
@@ -1000,29 +1019,12 @@
           <div class="info-note-static">These percentages don't add together — each applies separately to its own sales category, not combined.</div>
         </div>
 
-        <div class="field-row-label-info">
-          <button class="settings-toggle" id="eventToggle">Dessert / Event / Other</button>
-          <button type="button" class="info-btn" id="eventInfoBtn" aria-label="What is Dessert / Event / Other?">&#9432;</button>
-        </div>
-        <div class="info-note" id="eventInfoNote" style="display:none;">Some restaurants have a separate tipout rate for event or dessert sales (e.g. a cake-cutting fee). If you have any today, enter them here.</div>
-        <div class="settings-block" id="eventBlock" style="display:none;">
-          <div class="field-row">
-            <label>Event/dessert sales<span class="hint">optional</span></label>
-            <input type="number" inputmode="decimal" id="eventSales" placeholder="0.00" />
-          </div>
-          <div class="field-row">
-            <label>Event/dessert tipout %</label>
-            <input type="number" inputmode="decimal" id="eventPct" step="0.1" placeholder="0" />
-          </div>
-        </div>
-
         <button class="calc-btn" id="calcBtn">Calculate</button>
 
         <div class="result" id="resultBlock" style="display:none;">
           <div class="amount" id="resultAmount">$0.00</div>
           <div class="caption" id="resultCaption">—</div>
           <div class="breakdown" id="breakdown"></div>
-          <div class="caption" style="margin-top:6px;font-size:11px;">negative means the restaurant owes you</div>
 
           <div class="cash-block">
             <div class="field-row">
@@ -1099,7 +1101,7 @@
 (function() {
   // Identifies this exact deployed copy of index.html - used by the
   // stale-document self-heal check further down. Bump on every deploy.
-  const APP_VERSION = '2026-09-16-a';
+  const APP_VERSION = '2026-09-17-a';
 
   // ===== STALE-DOCUMENT SELF-HEAL (permanent - pull-to-refresh bypasses the
   // service worker entirely for the top-level navigation, per spec, so the
@@ -2774,9 +2776,6 @@
           <div class="amtwrap">
             <div class="amt get">${fmt(totalTips)}</div>
             <div class="cash">${subLine}</div>
-            ${hasWageLines ? `
-            <div class="sub pct-line">Net pay (wages + tips) &middot; ${fmt(shiftNetPay)}</div>
-            <div class="sub pct-line">Hourly rate w/ tips &middot; ${fmt(shiftHourlyRate)}</div>` : ''}
           </div>
         </div>
         <button type="button" class="settings-toggle copy-details-toggle" data-details-toggle="${e.id}">Details</button>
@@ -2790,6 +2789,9 @@
           <div class="sub pct-line">Drink tipout: ${fmt(tipoutBarAmt)}</div>
           ${eventUsed ? `<div class="sub pct-line">Event tipout: ${fmt(tipoutEventAmt)}</div>` : ''}
           <div class="sub pct-line">Charge tip: ${fmt(tipoutChargeAmt)}</div>
+          ${hasWageLines ? `
+          <div class="sub pct-line">Net pay (wages + tips): ${fmt(shiftNetPay)}</div>
+          <div class="sub pct-line">Hourly rate w/ tips: ${fmt(shiftHourlyRate)}</div>` : ''}
         </div>
         <button class="edit-btn" data-edit="${e.id}" aria-label="Edit shift">&#9998;</button>
         ${e.shiftType ? `<span class="shift-type-tag">${e.shiftType}</span>` : ''}
@@ -2970,11 +2972,12 @@
     $('resultAmount').className = 'amount ' + (whatYouOwe >= 0 ? 'owe' : 'get');
     $('resultCaption').textContent = whatYouOwe >= 0 ? 'you owe the restaurant' : 'the restaurant owes you';
     $('breakdown').innerHTML = `
-      <div><span>total tipout${tipoutPctOfSales !== null ? ' (' + tipoutPctOfSales.toFixed(1) + '%)' : ''}</span><span>${fmt(totalTipout)}</span></div>
       <div><span>Food tipout</span><span>${fmt(tipoutFood)}</span></div>
       <div><span>Drink tipout</span><span>${fmt(tipoutBar)}</span></div>
+      <div><span>Charge tip tipout</span><span>${fmt(tipoutTip)}</span></div>
       ${eventSales !== 0 ? `<div><span>Event tipout</span><span>${fmt(tipoutEvent)}</span></div>` : ''}
-      <div><span>Charge tip</span><span>${fmt(tipoutTip)}</span></div>
+      <hr class="breakdown-divider" />
+      <div class="breakdown-total"><span>Total tipout${tipoutPctOfSales !== null ? ' (' + tipoutPctOfSales.toFixed(1) + '%)' : ''}</span><span>${fmt(totalTipout)}</span></div>
       <div><span>POS calculated</span><span>${fmt(posCalculated)}</span></div>
     `;
     $('resultBlock').style.display = 'block';
