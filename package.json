@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "rm -rf www && mkdir -p www/vendor && cp index.html manifest.json service-worker.js icon-192.png icon-512.png version.json www/ && cp vendor/supabase-js.min.js www/vendor/",
+    "build": "rm -rf www && mkdir -p www/vendor && cp index.html manifest.json service-worker.js icon-192.png icon-512.png version.json www/ && cp vendor/supabase-js.min.js www/vendor/ && (cp revenuecat.config.js www/ 2>/dev/null || cp revenuecat.config.example.js www/revenuecat.config.js) && npx esbuild src/revenuecat-init.js --bundle --format=iife --outfile=www/vendor/revenuecat.bundle.js",
     "sync": "npm run build && npx cap sync",
     "assets:generate": "capacitor-assets generate --ios --android --iconBackgroundColor '#133D26' --iconBackgroundColorDark '#0a3720' --splashBackgroundColor '#133D26' --splashBackgroundColorDark '#0a3720'"
   },
@@ -14,10 +14,13 @@
   "dependencies": {
     "@capacitor/android": "^7.6.9",
     "@capacitor/core": "^7.6.9",
-    "@capacitor/ios": "^7.6.9"
+    "@capacitor/ios": "^7.6.9",
+    "@revenuecat/purchases-capacitor": "^11.3.2",
+    "@revenuecat/purchases-capacitor-ui": "^11.3.2"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^7.6.9"
+    "@capacitor/cli": "^7.6.9",
+    "esbuild": "^0.28.2"
   }
 }

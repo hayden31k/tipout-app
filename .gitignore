@@ -4,4 +4,7 @@ node_modules/
 # Rebuild it any time with: npm run build
 www/
 
+# Real RevenueCat API keys — copy revenuecat.config.example.js to fill this in.
+revenuecat.config.js
+
 .DS_Store
