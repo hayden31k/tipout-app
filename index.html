@@ -674,6 +674,64 @@
   #restaurant-switcher-screen .switcher-confirm-delete { background: var(--owe); color: #fff; }
   #restaurant-switcher-screen .switcher-confirm-delete:disabled { opacity: 0.45; cursor: default; }
 
+  /* "Get Pro" paywall - same full-screen paper-card overlay pattern as
+     restaurant-switcher-screen above. Visual only for now: Subscribe
+     shows the same "Coming soon" alert as the old placeholder: no
+     RevenueCat purchase flow wired up yet, that's separate future work. */
+  #pro-paywall-screen {
+    --paper: #F0EAD6; --paper-2: #E7DFC5; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E;
+    font-family: 'Archivo', sans-serif;
+    color: var(--ink);
+    position: fixed; inset: 0; z-index: 1200;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+    overflow-y: auto;
+  }
+  #pro-paywall-screen * { box-sizing: border-box; }
+  #pro-paywall-screen .paywall-card {
+    position: relative; background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 360px; width: 100%;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35); margin: auto;
+  }
+  #pro-paywall-screen .paywall-close {
+    position: absolute; top: 8px; right: 10px; background: none; border: none;
+    color: var(--ink-soft); font-size: 20px; line-height: 1; cursor: pointer;
+  }
+  #pro-paywall-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 20px; margin: 0 0 4px; text-align: center; }
+  #pro-paywall-screen .paywall-tagline {
+    font-family: 'Space Mono', monospace; font-size: 11.5px; color: var(--ink-soft);
+    text-align: center; margin: 0 0 18px;
+  }
+  #pro-paywall-screen .paywall-features { list-style: none; margin: 0 0 22px; padding: 0; }
+  #pro-paywall-screen .paywall-features li {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-family: 'Space Mono', monospace; font-size: 12.5px; color: var(--ink);
+    padding: 7px 0; border-top: 1px solid var(--rule);
+  }
+  #pro-paywall-screen .paywall-features li:first-child { border-top: none; }
+  #pro-paywall-screen .paywall-features li::before { content: '✓'; color: var(--brass); font-weight: 700; flex: none; }
+  #pro-paywall-screen .paywall-plans { display: flex; gap: 10px; margin-bottom: 20px; }
+  #pro-paywall-screen .paywall-plan {
+    flex: 1; position: relative; text-align: left; cursor: pointer;
+    background: var(--paper-2); border: 1.5px solid var(--rule); border-radius: 6px;
+    padding: 12px 10px; font-family: 'Archivo', sans-serif;
+  }
+  #pro-paywall-screen .paywall-plan.active { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 18%, var(--paper)); }
+  #pro-paywall-screen .paywall-plan-badge {
+    position: absolute; top: -9px; right: 8px; background: var(--brass); color: #2B241A;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 8px;
+  }
+  #pro-paywall-screen .paywall-plan-name { display: block; font-weight: 600; font-size: 13px; color: var(--ink); margin-bottom: 4px; }
+  #pro-paywall-screen .paywall-plan-price { display: block; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 15px; color: var(--ink); }
+  #pro-paywall-screen .paywall-plan-period { font-family: 'Space Mono', monospace; font-weight: 400; font-size: 11px; color: var(--ink-soft); }
+  #pro-paywall-screen .paywall-subscribe {
+    width: 100%; padding: 12px; border-radius: 3px; border: none; background: var(--brass); color: #2B241A;
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 14px; cursor: pointer;
+  }
+
   /* Privacy Policy / Terms of Service overlay - one reusable scrollable
      panel, its title/body swapped in by JS depending on which was tapped. */
   #legal-screen {
@@ -857,6 +915,32 @@
         <button type="button" class="switcher-confirm-delete" id="switcherConfirmDelete" disabled>Delete</button>
       </div>
     </div>
+  </div>
+</div>
+<div id="pro-paywall-screen" style="display:none;">
+  <div class="paywall-card">
+    <button class="paywall-close" id="paywallCloseBtn" aria-label="Close">&times;</button>
+    <h1>Daily Tipout Pro</h1>
+    <p class="paywall-tagline">Unlock the full toolkit for tracking your tips.</p>
+    <ul class="paywall-features">
+      <li>Full stats history</li>
+      <li>Filter by shift type and day of week</li>
+      <li>Multiple restaurants</li>
+      <li>Custom colors</li>
+      <li>Hourly wage tracking</li>
+    </ul>
+    <div class="paywall-plans">
+      <button type="button" class="paywall-plan" id="paywallPlanMonthly" data-plan="monthly">
+        <span class="paywall-plan-name">Monthly</span>
+        <span class="paywall-plan-price">$0.99<span class="paywall-plan-period">/mo</span></span>
+      </button>
+      <button type="button" class="paywall-plan active" id="paywallPlanYearly" data-plan="yearly">
+        <span class="paywall-plan-badge">Best value</span>
+        <span class="paywall-plan-name">Yearly</span>
+        <span class="paywall-plan-price">$9.00<span class="paywall-plan-period">/yr</span></span>
+      </button>
+    </div>
+    <button type="button" class="paywall-subscribe" id="paywallSubscribeBtn">Subscribe</button>
   </div>
 </div>
 <div id="legal-screen" style="display:none;">
@@ -2286,12 +2370,29 @@
   $('menuCloseBtn').addEventListener('click', closeMenu);
   $('menuOverlay').addEventListener('click', closeMenu);
   $('menuDisplayName').addEventListener('change', saveSettings);
+  function openProPaywall() {
+    $('pro-paywall-screen').style.display = 'flex';
+  }
+  function closeProPaywall() {
+    $('pro-paywall-screen').style.display = 'none';
+  }
+  $('paywallCloseBtn').addEventListener('click', closeProPaywall);
+  document.querySelectorAll('.paywall-plan').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.paywall-plan').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+  // Visual only for now - no RevenueCat purchase flow wired up yet, that's separate future work.
+  $('paywallSubscribeBtn').addEventListener('click', () => {
+    alert('Coming soon');
+  });
   $('menuGetPro').addEventListener('click', () => {
     if (isProUnlocked()) {
       alert("You're already a Pro member.");
       return;
     }
-    alert('Coming soon');
+    closeMenu();
+    openProPaywall();
   });
 
   // ---- CSV export ----
