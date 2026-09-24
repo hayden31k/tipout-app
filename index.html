@@ -675,9 +675,8 @@
   #restaurant-switcher-screen .switcher-confirm-delete:disabled { opacity: 0.45; cursor: default; }
 
   /* "Get Pro" paywall - same full-screen paper-card overlay pattern as
-     restaurant-switcher-screen above. Visual only for now: Subscribe
-     shows the same "Coming soon" alert as the old placeholder: no
-     RevenueCat purchase flow wired up yet, that's separate future work. */
+     restaurant-switcher-screen above. Prices come from the current
+     RevenueCat offering and Subscribe starts a real store purchase. */
   #pro-paywall-screen {
     --paper: #F0EAD6; --paper-2: #E7DFC5; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E;
     font-family: 'Archivo', sans-serif;
@@ -727,10 +726,19 @@
   #pro-paywall-screen .paywall-plan-name { display: block; font-weight: 600; font-size: 13px; color: var(--ink); margin-bottom: 4px; }
   #pro-paywall-screen .paywall-plan-price { display: block; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 15px; color: var(--ink); }
   #pro-paywall-screen .paywall-plan-period { font-family: 'Space Mono', monospace; font-weight: 400; font-size: 11px; color: var(--ink-soft); }
+  #pro-paywall-screen .paywall-plan:disabled { opacity: 0.55; cursor: default; }
   #pro-paywall-screen .paywall-subscribe {
     width: 100%; padding: 12px; border-radius: 3px; border: none; background: var(--brass); color: #2B241A;
     font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 14px; cursor: pointer;
   }
+  #pro-paywall-screen .paywall-subscribe:disabled { opacity: 0.55; cursor: default; }
+  #pro-paywall-screen .paywall-status {
+    font-family: 'Space Mono', monospace; font-size: 11.5px; color: var(--ink-soft);
+    text-align: center; margin: 12px 0 0; line-height: 1.5;
+  }
+  #pro-paywall-screen .paywall-status:empty { display: none; }
+  #pro-paywall-screen .paywall-status.success { color: #2F6B3F; font-weight: 700; }
+  #pro-paywall-screen .paywall-status.error { color: #9A3B2E; }
 
   /* Privacy Policy / Terms of Service overlay - one reusable scrollable
      panel, its title/body swapped in by JS depending on which was tapped. */
@@ -932,15 +940,16 @@
     <div class="paywall-plans">
       <button type="button" class="paywall-plan" id="paywallPlanMonthly" data-plan="monthly">
         <span class="paywall-plan-name">Monthly</span>
-        <span class="paywall-plan-price">$0.99<span class="paywall-plan-period">/mo</span></span>
+        <span class="paywall-plan-price"><span class="paywall-plan-amount" id="paywallPriceMonthly">&hellip;</span><span class="paywall-plan-period">/mo</span></span>
       </button>
       <button type="button" class="paywall-plan active" id="paywallPlanYearly" data-plan="yearly">
         <span class="paywall-plan-badge">Best value</span>
         <span class="paywall-plan-name">Yearly</span>
-        <span class="paywall-plan-price">$8.99<span class="paywall-plan-period">/yr</span></span>
+        <span class="paywall-plan-price"><span class="paywall-plan-amount" id="paywallPriceYearly">&hellip;</span><span class="paywall-plan-period">/yr</span></span>
       </button>
     </div>
     <button type="button" class="paywall-subscribe" id="paywallSubscribeBtn">Subscribe</button>
+    <p class="paywall-status" id="paywallStatus" role="status" aria-live="polite"></p>
   </div>
 </div>
 <div id="legal-screen" style="display:none;">
@@ -2370,8 +2379,117 @@
   $('menuCloseBtn').addEventListener('click', closeMenu);
   $('menuOverlay').addEventListener('click', closeMenu);
   $('menuDisplayName').addEventListener('change', saveSettings);
+  // ---- Pro paywall (RevenueCat) ----
+  // Prices and packages come from RevenueCat's current offering, so the store
+  // handles currency/localization. A completed purchase is only confirmed to
+  // the user here - is_pro is deliberately NOT written from the client (that
+  // column is protected against self-escalation); the entitlement gets synced
+  // server-side.
+  const paywallPackages = { monthly: null, yearly: null };
+  let paywallOfferingsLoaded = false;
+  let paywallPurchasing = false;
+  let paywallPurchased = false;
+
+  function setPaywallStatus(text, kind) {
+    const el = $('paywallStatus');
+    el.textContent = text || '';
+    el.className = 'paywall-status' + (kind ? ' ' + kind : '');
+  }
+  function selectedPaywallPlan() {
+    const active = document.querySelector('.paywall-plan.active');
+    return active ? active.dataset.plan : 'yearly';
+  }
+  function updatePaywallButtons() {
+    const plans = { monthly: $('paywallPlanMonthly'), yearly: $('paywallPlanYearly') };
+    Object.keys(plans).forEach(plan => {
+      plans[plan].disabled = paywallPurchasing || (paywallOfferingsLoaded && !paywallPackages[plan]);
+    });
+    // If the pre-selected plan isn't offered, fall back to one that is.
+    const current = selectedPaywallPlan();
+    if (paywallOfferingsLoaded && !paywallPackages[current]) {
+      const other = current === 'yearly' ? 'monthly' : 'yearly';
+      if (paywallPackages[other]) {
+        document.querySelectorAll('.paywall-plan').forEach(b => b.classList.toggle('active', b.dataset.plan === other));
+      }
+    }
+    const btn = $('paywallSubscribeBtn');
+    btn.disabled = paywallPurchasing || paywallPurchased || !paywallPackages[selectedPaywallPlan()];
+    btn.textContent = paywallPurchased ? 'Subscribed' : paywallPurchasing ? 'Processing\u2026' : 'Subscribe';
+  }
+
+  async function loadPaywallOfferings() {
+    const rc = window.RevenueCat;
+    const configured = rc ? await rc.ready : false;
+    if (!configured) {
+      $('paywallPriceMonthly').textContent = '\u2014';
+      $('paywallPriceYearly').textContent = '\u2014';
+      paywallOfferingsLoaded = true;
+      updatePaywallButtons();
+      setPaywallStatus('Subscriptions are available in the Daily Tipout iOS app.');
+      return;
+    }
+    try {
+      const offerings = await rc.Purchases.getOfferings();
+      const offering = offerings && offerings.current;
+      const pkgs = (offering && offering.availablePackages) || [];
+      paywallPackages.monthly = (offering && offering.monthly) || pkgs.find(p => p.packageType === 'MONTHLY') || null;
+      paywallPackages.yearly = (offering && offering.annual) || pkgs.find(p => p.packageType === 'ANNUAL') || null;
+      paywallOfferingsLoaded = true;
+      $('paywallPriceMonthly').textContent = paywallPackages.monthly ? paywallPackages.monthly.product.priceString : '\u2014';
+      $('paywallPriceYearly').textContent = paywallPackages.yearly ? paywallPackages.yearly.product.priceString : '\u2014';
+      if (!paywallPackages.monthly && !paywallPackages.yearly) {
+        setPaywallStatus("Subscriptions aren't available right now. Please try again later.", 'error');
+      } else {
+        setPaywallStatus('');
+      }
+    } catch (err) {
+      console.error('RevenueCat getOfferings failed:', err);
+      $('paywallPriceMonthly').textContent = '\u2014';
+      $('paywallPriceYearly').textContent = '\u2014';
+      // Leave paywallOfferingsLoaded false so the next open retries.
+      setPaywallStatus("Couldn't load prices. Check your connection and try again.", 'error');
+    }
+    updatePaywallButtons();
+  }
+
+  function isPurchaseCancelled(err) {
+    const code = window.RevenueCat && window.RevenueCat.PURCHASES_ERROR_CODE;
+    const cancelledCode = code ? code.PURCHASE_CANCELLED_ERROR : '1';
+    return !!err && (String(err.code) === cancelledCode || err.userCancelled === true ||
+      !!(err.data && err.data.userCancelled));
+  }
+
+  async function purchaseSelectedPlan() {
+    if (paywallPurchasing || paywallPurchased) return;
+    const plan = selectedPaywallPlan();
+    const aPackage = paywallPackages[plan];
+    if (!aPackage) return;
+    paywallPurchasing = true;
+    setPaywallStatus('');
+    updatePaywallButtons();
+    try {
+      await window.RevenueCat.Purchases.purchasePackage({ aPackage });
+      paywallPurchased = true;
+      setPaywallStatus("You're subscribed to Daily Tipout Pro. Thanks for your support!", 'success');
+    } catch (err) {
+      if (isPurchaseCancelled(err)) {
+        setPaywallStatus('Purchase cancelled. You have not been charged.');
+      } else {
+        console.error('RevenueCat purchase failed:', err);
+        setPaywallStatus("The purchase didn't go through" + (err && err.message ? ': ' + err.message : '.') +
+          ' You have not been charged.', 'error');
+      }
+    } finally {
+      paywallPurchasing = false;
+      updatePaywallButtons();
+    }
+  }
+
   function openProPaywall() {
     $('pro-paywall-screen').style.display = 'flex';
+    if (!paywallPurchasing && !paywallPurchased) setPaywallStatus('');
+    updatePaywallButtons();
+    if (!paywallOfferingsLoaded) loadPaywallOfferings();
   }
   function closeProPaywall() {
     $('pro-paywall-screen').style.display = 'none';
@@ -2380,12 +2498,10 @@
   document.querySelectorAll('.paywall-plan').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.paywall-plan').forEach(b => b.classList.toggle('active', b === btn));
+      updatePaywallButtons();
     });
   });
-  // Visual only for now - no RevenueCat purchase flow wired up yet, that's separate future work.
-  $('paywallSubscribeBtn').addEventListener('click', () => {
-    alert('Coming soon');
-  });
+  $('paywallSubscribeBtn').addEventListener('click', purchaseSelectedPlan);
   $('menuGetPro').addEventListener('click', () => {
     if (isProUnlocked()) {
       alert("You're already a Pro member.");
