@@ -430,3 +430,12 @@ entrypoint = "./functions/delete-account/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/delete-account/*.html" ]
+
+[functions.revenuecat-webhook]
+enabled = true
+# Called server-to-server by RevenueCat, which has no Supabase JWT to send -
+# the function authenticates requests itself by checking the shared
+# REVENUECAT_WEBHOOK_SECRET in the Authorization header instead.
+verify_jwt = false
+import_map = "./functions/revenuecat-webhook/deno.json"
+entrypoint = "./functions/revenuecat-webhook/index.ts"

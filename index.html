@@ -1290,6 +1290,10 @@
     // can find and replay, independent of whether anyone was listening at
     // the moment of dispatch.
     window.__tipoutAuthState = { user: session ? session.user : null };
+    // Tie RevenueCat purchases to this account (or back to anonymous on
+    // sign-out) so the revenuecat-webhook function can grant Pro to the
+    // right user. No-op on web and when the user hasn't changed.
+    if (window.RevenueCat) window.RevenueCat.setUser(session ? session.user.id : null);
     window.dispatchEvent(new CustomEvent('tipout-auth-change', { detail: { user: session ? session.user : null } }));
   }
 
@@ -2468,6 +2472,9 @@
     setPaywallStatus('');
     updatePaywallButtons();
     try {
+      // Make sure a just-finished sign-in has reached RevenueCat first, so
+      // the purchase is recorded under the real account id.
+      await window.RevenueCat.identified;
       await window.RevenueCat.Purchases.purchasePackage({ aPackage });
       paywallPurchased = true;
       setPaywallStatus("You're subscribed to Daily Tipout Pro. Thanks for your support!", 'success');
