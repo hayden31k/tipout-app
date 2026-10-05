@@ -157,7 +157,9 @@
   .settings-block { background: var(--paper-2); border-radius: 2px; padding: 14px 14px 4px; margin: 12px 0 4px; }
   .settings-block .field-row { margin: 8px 0; }
   .settings-block .field-row label { font-size: 12.5px; }
-  .settings-block input[type=number] { width: 70px; font-size: 14px; }
+  /* Every input/select stays at 16px or larger: iOS zooms in when focusing
+     anything smaller and doesn't zoom back out. */
+  .settings-block input[type=number] { width: 70px; font-size: 16px; }
 
   .mode-toggle-label { font-family: 'Archivo', sans-serif; font-size: 12px; font-weight: 600; color: var(--ink); margin: 2px 0 6px; }
   .mode-toggle { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
@@ -311,8 +313,8 @@
   .edit-card { background: var(--paper); border-radius: 2px; padding: 14px; margin-bottom: 8px; border: 1.5px dashed var(--brass); }
   .edit-card .field-row { margin: 8px 0; }
   .edit-card .field-row label { font-size: 12px; }
-  .edit-card input[type=number] { width: 90px; font-size: 14px; }
-  .edit-card input[type=date] { width: 140px; font-size: 13px; font-family: 'Space Mono', monospace; border: none; border-bottom: 1.5px solid var(--rule); background: transparent; color: var(--ink); padding: 4px 2px; }
+  .edit-card input[type=number] { width: 90px; font-size: 16px; }
+  .edit-card input[type=date] { width: 140px; font-size: 16px; font-family: 'Space Mono', monospace; border: none; border-bottom: 1.5px solid var(--rule); background: transparent; color: var(--ink); padding: 4px 2px; }
   .edit-row-btns { display: flex; gap: 8px; margin-top: 12px; }
   .edit-row-btns button {
     flex: 1; padding: 8px; border-radius: 3px; font-family: 'Archivo', sans-serif; font-weight: 600;
@@ -345,12 +347,13 @@
 
   .custom-range-row { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
   .custom-range-row input[type=date] {
-    font-family: 'Space Mono', monospace; font-size: 12px; padding: 5px 6px;
+    flex: 1 1 128px; min-width: 0;
+    font-family: 'Space Mono', monospace; font-size: 16px; padding: 5px 6px;
     border: 1.3px solid var(--rule); border-radius: 3px; background: var(--paper-2); color: var(--ink);
   }
   .custom-range-row .to-label { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--ink-soft); }
   .custom-range-row #applyRange {
-    padding: 5px 10px; border-radius: 3px; border: 1.3px solid var(--brass); background: var(--brass);
+    flex: 0 0 100%; padding: 7px 10px; border-radius: 3px; border: 1.3px solid var(--brass); background: var(--brass);
     color: #2B241A; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 11.5px; cursor: pointer;
   }
 
@@ -424,7 +427,7 @@
   .menu-static { font-size: 13.5px; word-break: break-word; }
   .menu-field input[type=text] {
     width: 100%; padding: 7px 8px; border: 1.3px solid var(--rule); border-radius: 3px;
-    background: transparent; font-family: 'Archivo', sans-serif; font-size: 14px; color: var(--ink);
+    background: transparent; font-family: 'Archivo', sans-serif; font-size: 16px; color: var(--ink);
   }
   .menu-field input[type=text]:focus { outline: none; border-color: var(--brass); }
   .menu-status-row {
@@ -476,7 +479,7 @@
   #login-screen .login-sub { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); margin: 0 0 20px; }
   #login-screen input[type=email], #login-screen input[type=text] {
     width: 100%; padding: 10px 12px; border: 1.5px solid var(--rule); border-radius: 3px;
-    background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink); margin-bottom: 12px;
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 16px; color: var(--ink); margin-bottom: 12px;
     letter-spacing: 0.04em; text-align: center;
   }
   #login-screen input[type=email]:focus, #login-screen input[type=text]:focus { outline: none; border-color: var(--ink); }
@@ -516,7 +519,7 @@
   }
   #onboarding-screen input[type=text], #onboarding-screen input[type=number] {
     width: 100%; padding: 9px 10px; border: 1.5px solid var(--rule); border-radius: 3px;
-    background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink);
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 16px; color: var(--ink);
   }
   #onboarding-screen input:focus { outline: none; border-color: var(--ink); }
   #onboarding-screen .onboarding-pct-row { display: flex; gap: 8px; }
@@ -557,7 +560,7 @@
   }
   #restaurant-panel input[type=text], #restaurant-panel input[type=number], #restaurant-panel select {
     width: 100%; padding: 9px 10px; border: 1.5px solid var(--rule); border-radius: 3px;
-    background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink);
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 16px; color: var(--ink);
   }
   #restaurant-panel select { background: var(--paper); }
   #restaurant-panel input:focus { outline: none; border-color: var(--ink); }
@@ -607,7 +610,7 @@
   #delete-account-screen .delete-sub { font-family: 'Space Mono', monospace; font-size: 12.5px; color: var(--ink-soft); margin: 0 0 22px; line-height: 1.55; }
   #delete-account-screen input[type=text] {
     width: 100%; padding: 10px 12px; border: 1.5px solid var(--owe); border-radius: 3px;
-    background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink); margin-bottom: 18px;
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 16px; color: var(--ink); margin-bottom: 18px;
     letter-spacing: 0.08em; text-align: center; text-transform: uppercase;
   }
   #delete-account-screen input[type=text]:focus { outline: none; border-color: var(--ink); }
@@ -665,7 +668,7 @@
   }
   #restaurant-switcher-screen input[type=text] {
     width: 100%; padding: 10px 12px; border: 1.5px solid var(--owe); border-radius: 3px;
-    background: transparent; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--ink); margin-bottom: 18px;
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 16px; color: var(--ink); margin-bottom: 18px;
     letter-spacing: 0.08em; text-align: center; text-transform: uppercase;
   }
   #restaurant-switcher-screen input[type=text]:focus { outline: none; border-color: var(--ink); }
@@ -1910,9 +1913,8 @@
     $('restaurantPanelSplitPctRow').style.display = combined ? 'none' : '';
     $('restaurantPanelCombinedPctRow').style.display = combined ? '' : 'none';
   }
-  // Pro feature: swatches always render, but selecting one is gated - a
-  // locked user sees the picker and gets the upgrade message on tap,
-  // matching the pattern used for the other Pro gates.
+  // Free for any signed-in user (restaurants are per-account, so there's
+  // nothing to save a color to while signed out).
   function renderColorSwatches() {
     const restaurant = getActiveRestaurant();
     const current = (restaurant && restaurant.bg_color) || DEFAULT_BG_COLOR;
@@ -1938,8 +1940,8 @@
     });
   }
   async function selectRestaurantBgColor(hex) {
-    if (!isProUnlocked()) {
-      alert('Custom colors are a Pro feature — upgrade to Pro to unlock');
+    if (!isSignedIn()) {
+      alert('Sign in to choose a restaurant color');
       return;
     }
     const data = await updateActiveRestaurant({ bg_color: hex });
@@ -2469,6 +2471,15 @@
 
   async function purchaseSelectedPlan() {
     if (paywallPurchasing || paywallPurchased) return;
+    // Pro is granted to a Supabase account (via the RevenueCat webhook), so
+    // an anonymous purchase would have nowhere to land - sign in first.
+    if (!isSignedIn()) {
+      if (confirm('Please sign in before subscribing so Pro is tied to your account. Sign in now?')) {
+        closeProPaywall();
+        window.showLoginOverlay();
+      }
+      return;
+    }
     const plan = selectedPaywallPlan();
     const aPackage = paywallPackages[plan];
     if (!aPackage) return;
