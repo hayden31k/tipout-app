@@ -1471,6 +1471,7 @@
     applyRestaurantTheme(isSignedIn() ? getActiveRestaurant() : null);
     await loadEntries();
     updateMenuAuthView();
+    resumePaywallAfterSignIn();
   }
 
   window.addEventListener('tipout-auth-change', (ev) => handleAuthChange(ev.detail.user));
@@ -2353,6 +2354,7 @@
     hideOnboarding();
     renderMastheadTitle();
     await loadEntries();
+    resumePaywallAfterSignIn();
   });
 
   // ---- Greeting ----
@@ -2399,6 +2401,9 @@
   let paywallOfferingsLoaded = false;
   let paywallPurchasing = false;
   let paywallPurchased = false;
+  // Plan to reopen the paywall on once a sign-in started from Subscribe
+  // finishes (null when nothing is pending).
+  let paywallResumePlan = null;
 
   function setPaywallStatus(text, kind) {
     const el = $('paywallStatus');
@@ -2475,6 +2480,7 @@
     // an anonymous purchase would have nowhere to land - sign in first.
     if (!isSignedIn()) {
       if (confirm('Please sign in before subscribing so Pro is tied to your account. Sign in now?')) {
+        paywallResumePlan = selectedPaywallPlan();
         closeProPaywall();
         window.showLoginOverlay();
       }
@@ -2516,6 +2522,19 @@
   function closeProPaywall() {
     $('pro-paywall-screen').style.display = 'none';
   }
+  // Called once sign-in has settled and again when onboarding closes, so a
+  // brand-new account finishes onboarding before the paywall comes back.
+  function resumePaywallAfterSignIn() {
+    if (!paywallResumePlan || !isSignedIn()) return;
+    if ($('onboarding-screen').style.display === 'flex') return;
+    const plan = paywallResumePlan;
+    paywallResumePlan = null;
+    if (isProUnlocked()) return;
+    document.querySelectorAll('.paywall-plan').forEach(b => b.classList.toggle('active', b.dataset.plan === plan));
+    openProPaywall();
+  }
+  // Closing sign-in without finishing it abandons the pending reopen.
+  $('loginDismissBtn').addEventListener('click', () => { paywallResumePlan = null; });
   $('paywallCloseBtn').addEventListener('click', closeProPaywall);
   document.querySelectorAll('.paywall-plan').forEach(btn => {
     btn.addEventListener('click', () => {
