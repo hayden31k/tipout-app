@@ -739,6 +739,20 @@
     font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 14px; cursor: pointer;
   }
   #pro-paywall-screen .paywall-subscribe:disabled { opacity: 0.55; cursor: default; }
+  #pro-paywall-screen .paywall-restore {
+    display: block; margin: 10px auto 0; padding: 4px 8px; background: none; border: none;
+    font-family: 'Space Mono', monospace; font-size: 11.5px; color: var(--ink-soft);
+    text-decoration: underline; cursor: pointer;
+  }
+  #pro-paywall-screen .paywall-restore:disabled { opacity: 0.55; cursor: default; }
+  #pro-paywall-screen .paywall-terms {
+    font-family: 'Space Mono', monospace; font-size: 10.5px; color: var(--ink-soft);
+    text-align: center; line-height: 1.5; margin: -6px 0 16px;
+  }
+  #pro-paywall-screen .paywall-terms button {
+    background: none; border: none; padding: 0; font: inherit; color: var(--ink);
+    text-decoration: underline; cursor: pointer;
+  }
   #pro-paywall-screen .paywall-status {
     font-family: 'Space Mono', monospace; font-size: 11.5px; color: var(--ink-soft);
     text-align: center; margin: 12px 0 0; line-height: 1.5;
@@ -955,7 +969,9 @@
         <span class="paywall-plan-price"><span class="paywall-plan-amount" id="paywallPriceYearly">&hellip;</span><span class="paywall-plan-period">/yr</span></span>
       </button>
     </div>
+    <p class="paywall-terms">Subscriptions renew automatically unless cancelled at least 24 hours before the end of the current period. Manage or cancel anytime in your Apple ID settings.<br><button type="button" id="paywallTermsLink">Terms of Service</button> &middot; <button type="button" id="paywallPrivacyLink">Privacy Policy</button></p>
     <button type="button" class="paywall-subscribe" id="paywallSubscribeBtn">Subscribe</button>
+    <button type="button" class="paywall-restore" id="paywallRestoreBtn">Restore Purchases</button>
     <p class="paywall-status" id="paywallStatus" role="status" aria-live="polite"></p>
   </div>
 </div>
@@ -2401,6 +2417,12 @@
   let paywallOfferingsLoaded = false;
   let paywallPurchasing = false;
   let paywallPurchased = false;
+  let paywallRestoring = false;
+  // True once RevenueCat is configured (native iOS); Restore needs the SDK
+  // just like Subscribe does.
+  let paywallStoreAvailable = false;
+  // RevenueCat entitlement identifier that unlocks Pro.
+  const PRO_ENTITLEMENT_ID = 'pro';
   // Plan to reopen the paywall on once a sign-in started from Subscribe
   // finishes (null when nothing is pending).
   let paywallResumePlan = null;
@@ -2417,7 +2439,7 @@
   function updatePaywallButtons() {
     const plans = { monthly: $('paywallPlanMonthly'), yearly: $('paywallPlanYearly') };
     Object.keys(plans).forEach(plan => {
-      plans[plan].disabled = paywallPurchasing || (paywallOfferingsLoaded && !paywallPackages[plan]);
+      plans[plan].disabled = paywallPurchasing || paywallRestoring || (paywallOfferingsLoaded && !paywallPackages[plan]);
     });
     // If the pre-selected plan isn't offered, fall back to one that is.
     const current = selectedPaywallPlan();
@@ -2428,13 +2450,15 @@
       }
     }
     const btn = $('paywallSubscribeBtn');
-    btn.disabled = paywallPurchasing || paywallPurchased || !paywallPackages[selectedPaywallPlan()];
+    btn.disabled = paywallPurchasing || paywallRestoring || paywallPurchased || !paywallPackages[selectedPaywallPlan()];
     btn.textContent = paywallPurchased ? 'Subscribed' : paywallPurchasing ? 'Processing\u2026' : 'Subscribe';
+    $('paywallRestoreBtn').disabled = !paywallStoreAvailable || paywallPurchasing || paywallRestoring;
   }
 
   async function loadPaywallOfferings() {
     const rc = window.RevenueCat;
     const configured = rc ? await rc.ready : false;
+    paywallStoreAvailable = configured;
     if (!configured) {
       $('paywallPriceMonthly').textContent = '\u2014';
       $('paywallPriceYearly').textContent = '\u2014';
@@ -2475,7 +2499,7 @@
   }
 
   async function purchaseSelectedPlan() {
-    if (paywallPurchasing || paywallPurchased) return;
+    if (paywallPurchasing || paywallRestoring || paywallPurchased) return;
     // Pro is granted to a Supabase account (via the RevenueCat webhook), so
     // an anonymous purchase would have nowhere to land - sign in first.
     if (!isSignedIn()) {
@@ -2513,9 +2537,53 @@
     }
   }
 
+  async function restorePurchases() {
+    if (paywallPurchasing || paywallRestoring || !paywallStoreAvailable) return;
+    // Same reason as Subscribe: restored purchases have to land on a
+    // Supabase account. Restoring while anonymous would also move them off
+    // whichever account owned them.
+    if (!isSignedIn()) {
+      if (confirm('Please sign in before restoring so Pro is tied to your account. Sign in now?')) {
+        paywallResumePlan = selectedPaywallPlan();
+        closeProPaywall();
+        window.showLoginOverlay();
+      }
+      return;
+    }
+    paywallRestoring = true;
+    setPaywallStatus('Checking your purchases\u2026');
+    updatePaywallButtons();
+    try {
+      await window.RevenueCat.identified;
+      const { customerInfo } = await window.RevenueCat.Purchases.restorePurchases();
+      const active = (customerInfo && customerInfo.entitlements && customerInfo.entitlements.active) || {};
+      // customerInfo only carries the original (possibly anonymous) id, so
+      // also log the current one the restore was recorded under.
+      const current = await window.RevenueCat.Purchases.getAppUserID().catch(() => null);
+      console.log('RevenueCat restorePurchases customerInfo: ' + JSON.stringify({
+        appUserId: current && current.appUserID,
+        originalAppUserId: customerInfo && customerInfo.originalAppUserId,
+        activeEntitlements: Object.keys(active),
+      }));
+      if (active[PRO_ENTITLEMENT_ID]) {
+        paywallPurchased = true;
+        setPaywallStatus('Your Daily Tipout Pro subscription has been restored.', 'success');
+      } else {
+        setPaywallStatus('No active subscription found.');
+      }
+    } catch (err) {
+      console.error('RevenueCat restorePurchases failed:', err);
+      setPaywallStatus("Couldn't restore purchases" + (err && err.message ? ': ' + err.message : '.') +
+        ' Please try again.', 'error');
+    } finally {
+      paywallRestoring = false;
+      updatePaywallButtons();
+    }
+  }
+
   function openProPaywall() {
     $('pro-paywall-screen').style.display = 'flex';
-    if (!paywallPurchasing && !paywallPurchased) setPaywallStatus('');
+    if (!paywallPurchasing && !paywallRestoring && !paywallPurchased) setPaywallStatus('');
     updatePaywallButtons();
     if (!paywallOfferingsLoaded) loadPaywallOfferings();
   }
@@ -2543,6 +2611,7 @@
     });
   });
   $('paywallSubscribeBtn').addEventListener('click', purchaseSelectedPlan);
+  $('paywallRestoreBtn').addEventListener('click', restorePurchases);
   $('menuGetPro').addEventListener('click', () => {
     if (isProUnlocked()) {
       alert("You're already a Pro member.");
@@ -2705,6 +2774,10 @@
     openLegalScreen('Terms of Service', TERMS_OF_SERVICE_HTML);
   });
   $('legalCloseBtn').addEventListener('click', closeLegalScreen);
+  // From the paywall, the legal panel opens on top of it (same z-index,
+  // later in the document) so closing it lands back on the paywall.
+  $('paywallTermsLink').addEventListener('click', () => openLegalScreen('Terms of Service', TERMS_OF_SERVICE_HTML));
+  $('paywallPrivacyLink').addEventListener('click', () => openLegalScreen('Privacy Policy', PRIVACY_POLICY_HTML));
 
   // ---- Delete account ----
   const deleteScreen = $('delete-account-screen');
