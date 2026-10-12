@@ -477,12 +477,12 @@
   }
   #login-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 20px; margin: 0 0 6px; }
   #login-screen .login-sub { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); margin: 0 0 20px; }
-  #login-screen input[type=email], #login-screen input[type=text] {
+  #login-screen input[type=email], #login-screen input[type=text], #login-screen input[type=password] {
     width: 100%; padding: 10px 12px; border: 1.5px solid var(--rule); border-radius: 3px;
     background: transparent; font-family: 'Space Mono', monospace; font-size: 16px; color: var(--ink); margin-bottom: 12px;
     letter-spacing: 0.04em; text-align: center;
   }
-  #login-screen input[type=email]:focus, #login-screen input[type=text]:focus { outline: none; border-color: var(--ink); }
+  #login-screen input[type=email]:focus, #login-screen input[type=text]:focus, #login-screen input[type=password]:focus { outline: none; border-color: var(--ink); }
   #login-screen button {
     width: 100%; padding: 12px; background: var(--ink); color: var(--paper); border: none; border-radius: 3px;
     font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer;
@@ -492,6 +492,7 @@
     width: auto; background: none; border: none; color: var(--ink-soft); font-family: 'Space Mono', monospace;
     font-weight: 400; font-size: 11px; text-decoration: underline; cursor: pointer; padding: 4px 0 0; margin-top: 10px;
   }
+  #login-screen .review-email { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink); margin: 0 0 12px; word-break: break-all; }
   #login-screen .login-status { margin-top: 14px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); min-height: 16px; }
 
   /* Onboarding overlay */
@@ -833,7 +834,14 @@
       <button id="verifyCodeBtn">Verify</button>
       <button type="button" class="resend-link" id="resendCodeBtn">Resend code</button>
     </div>
+    <div id="loginReviewStep" style="display:none;">
+      <p class="review-email" id="loginReviewEmail"></p>
+      <input type="password" id="loginReviewPassword" placeholder="Password" autocomplete="current-password" />
+      <button id="reviewSignInBtn">Sign in</button>
+      <button type="button" class="resend-link" id="reviewBackBtn">Use an email code instead</button>
+    </div>
     <div class="login-status" id="loginStatus"></div>
+    <button type="button" class="resend-link" id="reviewSignInLink">App Review sign-in</button>
   </div>
 </div>
 <div id="onboarding-screen" style="display:none;">
@@ -1279,18 +1287,45 @@
   const statusEl = document.getElementById('loginStatus');
   const loginDismissBtn = document.getElementById('loginDismissBtn');
 
+  const reviewStep = document.getElementById('loginReviewStep');
+  const reviewPasswordInput = document.getElementById('loginReviewPassword');
+  const reviewSignInBtn = document.getElementById('reviewSignInBtn');
+  const reviewSignInLink = document.getElementById('reviewSignInLink');
+
+  // App Review can't receive an email code, so this one demo account (created
+  // by hand in the Supabase dashboard) also has a password. The email is
+  // fixed here, never typed, so this path can only ever sign in to it -
+  // signInWithPassword never creates accounts, and everyone else signs in
+  // with a code and has no password. The password lives only in App Store
+  // Connect's review notes, never in this repo.
+  const APP_REVIEW_EMAIL = 'appreview@dailytipout.app';
+
   let currentSession = null;
   let pendingEmail = '';
 
   function showEmailStep() {
     emailStep.style.display = 'block';
     codeStep.style.display = 'none';
+    reviewStep.style.display = 'none';
+    reviewSignInLink.style.display = '';
   }
   function showCodeStep() {
     emailStep.style.display = 'none';
     codeStep.style.display = 'block';
+    reviewStep.style.display = 'none';
+    reviewSignInLink.style.display = '';
     codeInput.value = '';
     codeInput.focus();
+  }
+  function showReviewStep() {
+    emailStep.style.display = 'none';
+    codeStep.style.display = 'none';
+    reviewStep.style.display = 'block';
+    reviewSignInLink.style.display = 'none';
+    statusEl.textContent = '';
+    document.getElementById('loginReviewEmail').textContent = APP_REVIEW_EMAIL;
+    reviewPasswordInput.value = '';
+    reviewPasswordInput.focus();
   }
   function showLoginOverlay() {
     statusEl.textContent = '';
@@ -1438,6 +1473,25 @@
     if (error) { statusEl.textContent = error.message; }
   });
 
+  reviewSignInLink.addEventListener('click', showReviewStep);
+  document.getElementById('reviewBackBtn').addEventListener('click', () => {
+    statusEl.textContent = '';
+    showEmailStep();
+  });
+  // On success, onAuthStateChange above takes over exactly as for a code
+  // sign-in: updateAuthUI() links RevenueCat and the overlay closes.
+  reviewSignInBtn.addEventListener('click', async () => {
+    const password = reviewPasswordInput.value;
+    if (!password) { statusEl.textContent = 'Enter the password.'; return; }
+    reviewSignInBtn.disabled = true;
+    statusEl.textContent = 'Signing in...';
+    const { error } = await supabaseClient.auth.signInWithPassword({ email: APP_REVIEW_EMAIL, password });
+    reviewSignInBtn.disabled = false;
+    if (error) { statusEl.textContent = error.message; return; }
+    reviewPasswordInput.value = '';
+    statusEl.textContent = '';
+  });
+
   resendBtn.addEventListener('click', async () => {
     if (!pendingEmail) return;
     resendBtn.disabled = true;
@@ -1452,6 +1506,9 @@
   });
   codeInput.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') verifyBtn.click();
+  });
+  reviewPasswordInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') reviewSignInBtn.click();
   });
 })();
 </script>
