@@ -2486,6 +2486,10 @@
   let paywallStoreAvailable = false;
   // RevenueCat entitlement identifier that unlocks Pro.
   const PRO_ENTITLEMENT_ID = 'daily_tipout_pro';
+  // After a purchase/restore, how often and how long to wait for the
+  // revenuecat-webhook to flip user_settings.is_pro.
+  const PRO_ACTIVATION_POLL_MS = 2000;
+  const PRO_ACTIVATION_TIMEOUT_MS = 30000;
   // Plan to reopen the paywall on once a sign-in started from Subscribe
   // finishes (null when nothing is pending).
   let paywallResumePlan = null;
@@ -2585,7 +2589,7 @@
       await window.RevenueCat.identified;
       await window.RevenueCat.Purchases.purchasePackage({ aPackage });
       paywallPurchased = true;
-      setPaywallStatus("You're subscribed to Daily Tipout Pro. Thanks for your support!", 'success');
+      await waitForProActivation("You're subscribed to Daily Tipout Pro. Thanks for your support!");
     } catch (err) {
       if (isPurchaseCancelled(err)) {
         setPaywallStatus('Purchase cancelled. You have not been charged.');
@@ -2598,6 +2602,39 @@
       paywallPurchasing = false;
       updatePaywallButtons();
     }
+  }
+
+  // The store purchase is done, but Pro only unlocks once the
+  // revenuecat-webhook has set user_settings.is_pro (the client can't write
+  // it). Poll for that, then show successMessage and refresh the Pro gates.
+  // Never throws - callers treat the purchase itself as already succeeded.
+  async function waitForProActivation(successMessage) {
+    const userId = currentUser && currentUser.id;
+    if (!userId) return;
+    setPaywallStatus('Activating Pro\u2026');
+    const startedAt = Date.now();
+    while (true) {
+      try {
+        const { data, error } = await window.supabaseClient
+          .from('user_settings').select('is_pro').eq('user_id', userId).maybeSingle();
+        if (error) console.error('Pro activation check failed:', error);
+        if (!error && data && data.is_pro) break;
+      } catch (err) {
+        console.error('Pro activation check failed:', err);
+      }
+      // Signed out (or switched account) meanwhile - stop quietly.
+      if (!currentUser || currentUser.id !== userId) return;
+      if (Date.now() - startedAt >= PRO_ACTIVATION_TIMEOUT_MS) {
+        setPaywallStatus("Your purchase went through. Pro should activate shortly; reopen the app if it doesn't.");
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, PRO_ACTIVATION_POLL_MS));
+    }
+    if (!currentUser || currentUser.id !== userId) return;
+    settings.isPro = true;
+    updateMenuAuthView();
+    renderStats();
+    setPaywallStatus(successMessage, 'success');
   }
 
   async function restorePurchases() {
@@ -2630,7 +2667,7 @@
       }));
       if (active[PRO_ENTITLEMENT_ID]) {
         paywallPurchased = true;
-        setPaywallStatus('Your Daily Tipout Pro subscription has been restored.', 'success');
+        await waitForProActivation('Your Daily Tipout Pro subscription has been restored.');
       } else {
         setPaywallStatus('No active subscription found.');
       }
