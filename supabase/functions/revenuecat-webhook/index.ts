@@ -17,11 +17,18 @@
 //      Purchases.logIn(user.id) on sign-in. Anonymous RevenueCat ids
 //      ($RCAnonymousID:...) can't be mapped to an account and are ignored.
 //
+// TRANSFER events (a restore moved purchases between App User IDs) carry no
+// app_user_id. Instead they have transferred_from / transferred_to string
+// arrays of every id involved, anonymous aliases included - see
+// https://www.revenuecat.com/docs/integrations/webhooks/event-types-and-fields
+// Supabase user ids in transferred_to get is_pro = true, those in
+// transferred_from get is_pro = false, and anonymous ids are skipped.
+//
 // Responses: 200 for anything handled or deliberately ignored (so
 // RevenueCat doesn't retry it), 401 for a bad secret, 500 for a database
 // failure (so RevenueCat retries later).
 
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 
 // Events that mean the user currently has access.
 const GRANT_EVENTS = new Set(["INITIAL_PURCHASE", "RENEWAL", "UNCANCELLATION"]);
@@ -80,21 +87,27 @@ Deno.serve(async (req: Request) => {
   }
 
   const type = event.type;
+
+  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+  });
+
+  if (type === "TRANSFER") return handleTransfer(adminClient, event);
+
   const appUserId = typeof event.app_user_id === "string" ? event.app_user_id : "";
 
   let isPro: boolean;
   if (GRANT_EVENTS.has(type)) isPro = true;
   else if (REVOKE_EVENTS.has(type)) isPro = false;
-  else return json({ received: true, ignored: `event type ${type}` });
+  else {
+    console.log(`revenuecat-webhook: ignored event type ${type} (app_user_id ${appUserId || "none"})`);
+    return json({ received: true, ignored: `event type ${type}` });
+  }
 
   if (!UUID_RE.test(appUserId)) {
     console.warn(`revenuecat-webhook: ${type} for non-account app_user_id ${appUserId} - ignored`);
     return json({ received: true, ignored: "app_user_id is not a Supabase user id" });
   }
-
-  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false },
-  });
 
   // Upsert so a purchase still lands if this user has no settings row yet.
   const { error } = await adminClient
@@ -107,3 +120,57 @@ Deno.serve(async (req: Request) => {
 
   return json({ received: true, user_id: appUserId, is_pro: isPro });
 });
+
+// Keeps only Supabase user ids from a transferred_from/transferred_to array,
+// lowercased and de-duplicated. Anything else (missing field, non-strings,
+// $RCAnonymousID:... aliases) is dropped.
+function accountIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const ids = value.filter((v): v is string => typeof v === "string" && UUID_RE.test(v));
+  return [...new Set(ids.map((id) => id.toLowerCase()))];
+}
+
+async function handleTransfer(
+  adminClient: SupabaseClient,
+  event: Record<string, unknown>,
+) {
+  const to = accountIds(event.transferred_to);
+  // An id on both sides ends up holding the purchases, so it keeps Pro.
+  const from = accountIds(event.transferred_from).filter((id) => !to.includes(id));
+  const skipped = [
+    ...(Array.isArray(event.transferred_from) ? event.transferred_from : []),
+    ...(Array.isArray(event.transferred_to) ? event.transferred_to : []),
+  ].filter((v) => !(typeof v === "string" && UUID_RE.test(v)));
+  if (skipped.length) {
+    console.log(`revenuecat-webhook: TRANSFER skipping non-account ids ${JSON.stringify(skipped)}`);
+  }
+  if (!to.length && !from.length) {
+    console.warn("revenuecat-webhook: TRANSFER with no Supabase user ids - ignored");
+    return json({ received: true, ignored: "no Supabase user ids in transfer" });
+  }
+
+  if (to.length) {
+    // Upsert, as for a purchase, so the receiving account gets Pro even
+    // without a settings row yet.
+    const { error } = await adminClient
+      .from("user_settings")
+      .upsert(to.map((user_id) => ({ user_id, is_pro: true })), { onConflict: "user_id" });
+    if (error) {
+      console.error(`revenuecat-webhook: TRANSFER failed to set is_pro=true for ${to.join(", ")}:`, error.message);
+      return json({ error: "Database update failed" }, 500);
+    }
+  }
+  if (from.length) {
+    // Plain update: a user with no settings row already reads as not Pro.
+    const { error } = await adminClient
+      .from("user_settings")
+      .update({ is_pro: false })
+      .in("user_id", from);
+    if (error) {
+      console.error(`revenuecat-webhook: TRANSFER failed to set is_pro=false for ${from.join(", ")}:`, error.message);
+      return json({ error: "Database update failed" }, 500);
+    }
+  }
+
+  return json({ received: true, transferred_to: to, transferred_from: from });
+}
