@@ -506,11 +506,12 @@
     justify-content: center;
     padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
     box-sizing: border-box;
+    overflow-y: auto;
   }
   #onboarding-screen * { box-sizing: border-box; }
   #onboarding-screen .onboarding-card {
     position: relative; background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 360px; width: 100%;
-    box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35); margin: auto;
   }
   #onboarding-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 20px; margin: 0 0 6px; text-align: center; }
   #onboarding-screen .onboarding-sub { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); margin: 0 0 20px; text-align: center; }
@@ -530,6 +531,12 @@
     font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer;
   }
   #onboarding-screen button:disabled { opacity: 0.6; cursor: default; }
+  #onboarding-screen .mode-toggle-label { margin-top: 14px; }
+  #onboarding-screen .mode-option {
+    margin-top: 0; padding: 8px 10px; border-radius: 4px; border: 1.3px solid var(--rule);
+    background: transparent; color: var(--ink-soft); font-size: 12px; font-weight: 400; text-align: left;
+  }
+  #onboarding-screen .mode-option.active { border-color: var(--brass); background: rgba(176,141,87,0.16); color: var(--ink); font-weight: 600; }
   #onboarding-screen .onboarding-status { margin-top: 12px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--owe); min-height: 16px; text-align: center; }
 
   /* Restaurant panel */
@@ -852,12 +859,17 @@
     <input type="text" id="onboardingName" placeholder="Your name" />
     <label for="onboardingRestaurantName">Restaurant name</label>
     <input type="text" id="onboardingRestaurantName" placeholder="e.g. The Blue Door" />
+    <div class="mode-toggle-label">How does your restaurant calculate tipout?</div>
+    <div class="mode-toggle">
+      <button type="button" class="mode-option active" id="onboardingModeSplitBtn">Separately on food and drink sales</button>
+      <button type="button" class="mode-option" id="onboardingModeCombinedBtn">One flat percentage on total sales combined</button>
+    </div>
     <div class="onboarding-pct-row">
       <div>
-        <label for="onboardingFoodPct">Food %</label>
+        <label for="onboardingFoodPct" id="onboardingFoodPctLabel">Food %</label>
         <input type="number" id="onboardingFoodPct" step="0.1" inputmode="decimal" />
       </div>
-      <div>
+      <div id="onboardingBarPctWrap">
         <label for="onboardingBarPct">Bar %</label>
         <input type="number" id="onboardingBarPct" step="0.1" inputmode="decimal" />
       </div>
@@ -2370,9 +2382,24 @@
   $('restaurantPanelAddAnother').addEventListener('click', addAnotherRestaurant);
 
   // ---- Onboarding (first restaurant) ----
+  // Starts from the signed-out settings (loadSettings falls back to the local
+  // blob while there's no restaurant yet), so a first sign-in keeps the
+  // tipout mode, percentages and event % the user already set up.
+  let onboardingMode = 'split';
+  function updateOnboardingModeUi() {
+    const combined = onboardingMode === 'combined';
+    $('onboardingModeSplitBtn').classList.toggle('active', !combined);
+    $('onboardingModeCombinedBtn').classList.toggle('active', combined);
+    $('onboardingFoodPctLabel').textContent = combined ? 'Tipout %' : 'Food %';
+    $('onboardingBarPctWrap').style.display = combined ? 'none' : '';
+  }
+  $('onboardingModeSplitBtn').addEventListener('click', () => { onboardingMode = 'split'; updateOnboardingModeUi(); });
+  $('onboardingModeCombinedBtn').addEventListener('click', () => { onboardingMode = 'combined'; updateOnboardingModeUi(); });
   function showOnboarding() {
     $('onboardingName').value = settings.displayName || '';
     $('onboardingRestaurantName').value = '';
+    onboardingMode = settings.tipoutMode === 'combined' ? 'combined' : 'split';
+    updateOnboardingModeUi();
     $('onboardingFoodPct').value = settings.foodPct;
     $('onboardingBarPct').value = settings.barPct;
     $('onboardingTipPct').value = settings.tipPct;
@@ -2388,6 +2415,8 @@
     const foodPct = parseFloat($('onboardingFoodPct').value) || 0;
     const barPct = parseFloat($('onboardingBarPct').value) || 0;
     const tipPct = parseFloat($('onboardingTipPct').value) || 0;
+    const tipoutMode = onboardingMode;
+    const eventPct = settings.eventPct || 0;
     if (!restaurantName) {
       $('onboardingStatus').textContent = 'Restaurant name is required.';
       return;
@@ -2399,7 +2428,7 @@
     const uid = currentUser.id;
     const { data: restaurant, error } = await window.supabaseClient
       .from('restaurants')
-      .insert({ user_id: uid, name: restaurantName, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, tipout_mode: 'split', payout_cadence: 'weekly', payout_start_day: 0 })
+      .insert({ user_id: uid, name: restaurantName, food_pct: foodPct, bar_pct: barPct, tip_pct: tipPct, event_pct: eventPct, tipout_mode: tipoutMode, payout_cadence: 'weekly', payout_start_day: 0 })
       .select()
       .single();
     if (error || !restaurant) {
@@ -2420,7 +2449,7 @@
     activeRestaurantId = restaurant.id;
     try { localStorage.setItem(ACTIVE_RESTAURANT_KEY, activeRestaurantId); } catch (e) {}
 
-    settings = { ...settings, foodPct, barPct, tipPct, eventPct: restaurant.event_pct || 0, tipoutMode: 'split', displayName: name };
+    settings = { ...settings, foodPct, barPct, tipPct, eventPct: restaurant.event_pct || 0, tipoutMode: restaurant.tipout_mode || tipoutMode, displayName: name };
     await persistDisplayName();
     $('foodPct').value = settings.foodPct;
     $('barPct').value = settings.barPct;
