@@ -495,6 +495,49 @@
   #login-screen .review-email { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink); margin: 0 0 12px; word-break: break-all; }
   #login-screen .login-status { margin-top: 14px; font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); min-height: 16px; }
 
+  /* First-launch tipout setup (signed-out, first open only). Sits below
+     every other overlay (login is 1000) so it can never cover sign-in, the
+     paywall or onboarding; those also hide it when they open. */
+  #first-launch-screen {
+    --paper: #F0EAD6; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E;
+    font-family: 'Archivo', sans-serif;
+    color: var(--ink);
+    position: fixed; inset: 0; z-index: 950;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    align-items: center;
+    justify-content: center;
+    padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    overflow-y: auto;
+  }
+  #first-launch-screen * { box-sizing: border-box; }
+  #first-launch-screen .first-launch-card {
+    position: relative; background: var(--paper); border-radius: 3px; padding: 32px 26px; max-width: 360px; width: 100%;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35); margin: auto;
+  }
+  #first-launch-screen h1 { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 20px; margin: 0 0 6px; text-align: center; }
+  #first-launch-screen .first-launch-sub { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--ink-soft); margin: 0 0 18px; text-align: center; line-height: 1.5; }
+  #first-launch-screen label {
+    display: block; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 14px 0 4px;
+  }
+  #first-launch-screen input[type=number] {
+    width: 100%; padding: 9px 10px; border: 1.5px solid var(--rule); border-radius: 3px;
+    background: transparent; font-family: 'Space Mono', monospace; font-size: 16px; color: var(--ink);
+  }
+  #first-launch-screen input:focus { outline: none; border-color: var(--ink); }
+  #first-launch-screen .first-launch-pct-row { display: flex; gap: 8px; }
+  #first-launch-screen .first-launch-pct-row > div { flex: 1; }
+  #first-launch-screen .first-launch-hint { font-family: 'Space Mono', monospace; font-size: 10.5px; color: var(--ink-soft); margin: 6px 0 0; line-height: 1.45; }
+  #first-launch-screen .first-launch-save {
+    width: 100%; margin-top: 20px; padding: 12px; background: var(--ink); color: var(--paper); border: none; border-radius: 3px;
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+  #first-launch-screen .first-launch-link {
+    display: block; margin: 10px auto 0; padding: 4px 8px; background: none; border: none;
+    font-family: 'Space Mono', monospace; font-size: 11.5px; color: var(--ink-soft); text-decoration: underline; cursor: pointer;
+  }
+
   /* Onboarding overlay */
   #onboarding-screen {
     --paper: #F0EAD6; --ink: #2B241A; --ink-soft: #6E6553; --brass: #B08D57; --rule: #C9BE9E; --owe: #B33A3A;
@@ -826,6 +869,36 @@
     </defs>
     <image class="intro-logo" href="icon-512.png" x="124" y="0" width="512" height="512" mask="url(#introCheckMask)" />
   </svg>
+</div>
+<div id="first-launch-screen" style="display:none;">
+  <div class="first-launch-card">
+    <h1>How does your restaurant tip out?</h1>
+    <p class="first-launch-sub">Set this once and every shift is calculated for you. You can change it anytime under &ldquo;edit tipout %&rdquo;.</p>
+    <div class="mode-toggle">
+      <button type="button" class="mode-option active" id="firstLaunchModeSplitBtn">Separately on food and drink sales</button>
+      <button type="button" class="mode-option" id="firstLaunchModeCombinedBtn">One flat percentage on total sales combined</button>
+    </div>
+    <div class="first-launch-pct-row" id="firstLaunchSplitRow">
+      <div>
+        <label for="firstLaunchFoodPct">Food tipout %</label>
+        <input type="number" id="firstLaunchFoodPct" step="0.1" inputmode="decimal" />
+      </div>
+      <div>
+        <label for="firstLaunchBarPct">Drink tipout %</label>
+        <input type="number" id="firstLaunchBarPct" step="0.1" inputmode="decimal" />
+      </div>
+    </div>
+    <div id="firstLaunchCombinedRow" style="display:none;">
+      <label for="firstLaunchCombinedPct">Tipout %</label>
+      <input type="number" id="firstLaunchCombinedPct" step="0.1" inputmode="decimal" />
+    </div>
+    <label for="firstLaunchTipPct">Charge tip %</label>
+    <input type="number" id="firstLaunchTipPct" step="0.1" inputmode="decimal" />
+    <p class="first-launch-hint">The card-processing fee some restaurants pass on to servers for credit/debit tips. Use 0 if yours doesn't.</p>
+    <button type="button" class="first-launch-save" id="firstLaunchSaveBtn">Save</button>
+    <button type="button" class="first-launch-link" id="firstLaunchSkipBtn">Skip for now</button>
+    <button type="button" class="first-launch-link" id="firstLaunchSignInBtn">Already have an account? Sign in</button>
+  </div>
 </div>
 <div id="login-screen" style="display:none;">
   <div class="login-card">
@@ -1340,6 +1413,8 @@
     reviewPasswordInput.focus();
   }
   function showLoginOverlay() {
+    // Never stack on the first-launch setup screen (script 2).
+    document.getElementById('first-launch-screen').style.display = 'none';
     statusEl.textContent = '';
     showEmailStep();
     loginScreen.style.display = 'flex';
@@ -1531,6 +1606,26 @@
 
   let authInitialized = false;
 
+  // First-launch setup screen eligibility, decided from storage as it was
+  // when the app opened (before this script writes anything). Any existing
+  // app data - saved settings, logged shifts, a restaurant, a past
+  // migration, a Supabase session, or the screen's own done-flag - means
+  // this isn't a first open, so people updating from an older build never
+  // see it.
+  const FIRST_LAUNCH_DONE_KEY = 'tipout-first-launch-done';
+  let firstLaunchEligible = (() => {
+    try {
+      const appKeys = ['tipout-settings', 'tipout-entries', 'tipout-migrated', 'tipout-active-restaurant-id', FIRST_LAUNCH_DONE_KEY];
+      if (appKeys.some(k => localStorage.getItem(k) !== null)) return false;
+      for (let i = 0; i < localStorage.length; i++) {
+        if (/^sb-.*-auth-token/.test(localStorage.key(i) || '')) return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  })();
+
   // updateAuthUI() (script 1) records its state on window.__tipoutAuthState
   // the moment it fires, regardless of whether anything is listening yet.
   // handleAuthChange is the single reconciliation path, invoked either live
@@ -1563,6 +1658,8 @@
     await loadEntries();
     updateMenuAuthView();
     resumePaywallAfterSignIn();
+    if (user) markFirstLaunchDone();
+    else maybeShowFirstLaunch();
   }
 
   window.addEventListener('tipout-auth-change', (ev) => handleAuthChange(ev.detail.user));
@@ -2381,6 +2478,67 @@
   });
   $('restaurantPanelAddAnother').addEventListener('click', addAnotherRestaurant);
 
+  // ---- First-launch tipout setup (signed out) ----
+  // One screen on the very first open: tipout mode, percentages and charge
+  // tip %, saved to the same local blob as "edit tipout %". Shown at most
+  // once - the done-flag is set on Save, Skip, Sign in, or any sign-in.
+  let firstLaunchMode = 'split';
+  function markFirstLaunchDone() {
+    firstLaunchEligible = false;
+    try { localStorage.setItem(FIRST_LAUNCH_DONE_KEY, 'true'); } catch (e) {}
+    hideFirstLaunch();
+  }
+  // Hides without counting as dismissed (another screen is taking over).
+  function hideFirstLaunch() {
+    $('first-launch-screen').style.display = 'none';
+  }
+  function anotherOverlayOpen() {
+    return ['login-screen', 'onboarding-screen', 'pro-paywall-screen', 'legal-screen', 'delete-account-screen',
+      'restaurant-panel', 'restaurant-switcher-screen'].some(id => $(id).style.display && $(id).style.display !== 'none');
+  }
+  function updateFirstLaunchModeUi() {
+    const combined = firstLaunchMode === 'combined';
+    $('firstLaunchModeSplitBtn').classList.toggle('active', !combined);
+    $('firstLaunchModeCombinedBtn').classList.toggle('active', combined);
+    $('firstLaunchSplitRow').style.display = combined ? 'none' : '';
+    $('firstLaunchCombinedRow').style.display = combined ? '' : 'none';
+  }
+  function maybeShowFirstLaunch() {
+    if (!firstLaunchEligible || isSignedIn() || anotherOverlayOpen()) return;
+    firstLaunchMode = settings.tipoutMode === 'combined' ? 'combined' : 'split';
+    $('firstLaunchFoodPct').value = settings.foodPct;
+    $('firstLaunchBarPct').value = settings.barPct;
+    $('firstLaunchCombinedPct').value = settings.foodPct;
+    $('firstLaunchTipPct').value = settings.tipPct;
+    updateFirstLaunchModeUi();
+    $('first-launch-screen').style.display = 'flex';
+  }
+  $('firstLaunchModeSplitBtn').addEventListener('click', () => { firstLaunchMode = 'split'; updateFirstLaunchModeUi(); });
+  $('firstLaunchModeCombinedBtn').addEventListener('click', () => { firstLaunchMode = 'combined'; updateFirstLaunchModeUi(); });
+  $('firstLaunchSaveBtn').addEventListener('click', async () => {
+    const combined = firstLaunchMode === 'combined';
+    // Same rules as saveSettings(): the combined % is stored as foodPct, and
+    // barPct is kept (hidden) for switching back to split.
+    settings = {
+      ...settings,
+      foodPct: parseFloat($(combined ? 'firstLaunchCombinedPct' : 'firstLaunchFoodPct').value) || 0,
+      barPct: combined ? settings.barPct : (parseFloat($('firstLaunchBarPct').value) || 0),
+      tipPct: parseFloat($('firstLaunchTipPct').value) || 0,
+      tipoutMode: firstLaunchMode,
+    };
+    $('foodPct').value = settings.foodPct;
+    $('barPct').value = settings.barPct;
+    $('tipPct').value = settings.tipPct;
+    updateTipoutModeUi();
+    markFirstLaunchDone();
+    await persistPercentages();
+  });
+  $('firstLaunchSkipBtn').addEventListener('click', markFirstLaunchDone);
+  $('firstLaunchSignInBtn').addEventListener('click', () => {
+    markFirstLaunchDone();
+    window.showLoginOverlay();
+  });
+
   // ---- Onboarding (first restaurant) ----
   // Starts from the signed-out settings (loadSettings falls back to the local
   // blob while there's no restaurant yet), so a first sign-in keeps the
@@ -2396,6 +2554,7 @@
   $('onboardingModeSplitBtn').addEventListener('click', () => { onboardingMode = 'split'; updateOnboardingModeUi(); });
   $('onboardingModeCombinedBtn').addEventListener('click', () => { onboardingMode = 'combined'; updateOnboardingModeUi(); });
   function showOnboarding() {
+    hideFirstLaunch();
     $('onboardingName').value = settings.displayName || '';
     $('onboardingRestaurantName').value = '';
     onboardingMode = settings.tipoutMode === 'combined' ? 'combined' : 'split';
@@ -2711,6 +2870,7 @@
   }
 
   function openProPaywall() {
+    hideFirstLaunch();
     $('pro-paywall-screen').style.display = 'flex';
     if (!paywallPurchasing && !paywallRestoring && !paywallPurchased) setPaywallStatus('');
     updatePaywallButtons();
